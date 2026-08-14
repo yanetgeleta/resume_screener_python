@@ -1,0 +1,10 @@
+# Root .gitignore (resume_screener_django/.gitignore)
+.DS_Store
+.vscode/
+.idea/
+.env
+.env.*
+!.env.example
+
+# Ignore OS junk across all folders
+Thumbs.db
