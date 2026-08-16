@@ -9,4 +9,8 @@ dependencies = [
     "django>=6.1",
     "djangorestframework>=3.18.0",
     "djangorestframework-simplejwt>=5.5.1",
+    "psycopg-binary>=3.3.4",
+    "psycopg[binary]>=3.3.4",
+    "python-dotenv>=1.2.2",
+    "redis>=8.1.0",
 ]
