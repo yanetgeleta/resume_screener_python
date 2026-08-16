@@ -14,6 +14,7 @@ from datetime import timedelta
 from os import getenv
 from pathlib import Path
 
+import dj_database_url
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -79,21 +80,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": getenv("PGDATABASE"),
-        "USER": getenv("PGUSER"),
-        "PASSWORD": getenv("PGPASSWORD"),
-        "HOST": getenv("PGHOST"),
-        "PORT": getenv("PGPORT", 5432),
-        "OPTIONS": {
-            "sslmode": "require",
-        },
-        "DISABLE_SERVER_SIDE_CURSORS": True,
-        "CONN_HEALTH_CHECKS": True,
-    }
+    "default": dj_database_url.config(
+        default=getenv("DATABASE_URL"),
+        conn_max_age=600,  # Keeps connections alive for better serverless performance
+        ssl_require=True,  # Neon strictly requires SSL connections
+    )
 }
 
 
@@ -159,7 +151,7 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": False,
     "AUTH_HEADER_TYPES": ("Bearer",),
-    "SIGNING_KEY": getenv("JWT_SECRET_KEY"),
+    "SIGNING_KEY": getenv("JWT_SIGNING_KEY"),
 }
 
 REST_FRAMEWORK = {
