@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "accounts",
     "rest_framework",
     "rest_framework_simplejwt",
+    "jobs",
 ]
 
 MIDDLEWARE = [
@@ -166,3 +167,8 @@ CACHES = {
         "LOCATION": getenv("REDIS_URL", "redis://127.0.0.1:6379/1"),
     }
 }
+
+MEDIA_ROOT = BASE_DIR / "resumes"
+
+# URL that handles the media served from MEDIA_ROOT
+MEDIA_URL = "/resumes/"
