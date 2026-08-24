@@ -21,13 +21,17 @@ class Job(models.Model):
 
 
 class Resume(models.Model):
-    original_filename = models.CharField(max_length=200)
+    class Status(models.TextChoices):
+        PENDING = "PE", _("PENDING")
+
+    original_filename = models.CharField(max_length=200, blank=True, null=True)
     file = models.FileField()
     skills = models.JSONField(default=dict, blank=True, null=True)
     experience_years = models.IntegerField(null=True, blank=True)
     company = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="resumes"
     )
+    # status
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

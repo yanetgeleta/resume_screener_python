@@ -1,5 +1,6 @@
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework import permissions, status, viewsets
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.response import Response
 
 from .models import Application, Job, Resume
 from .serializers import ApplicationSerializer, JobSerializer, ResumeSerializer
@@ -8,23 +9,69 @@ from .serializers import ApplicationSerializer, JobSerializer, ResumeSerializer
 # Create your views here.
 class JobViewSet(viewsets.ModelViewSet):
     serializer_class = JobSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Job.objects.filter(company=self.request.user)
+        user = self.request.user
+        if user.is_staff:
+            return Job.objects.all()
+        return Job.objects.filter(company=user)
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user)
 
 
 class ResumeViewSet(viewsets.ModelViewSet):
     serializer_class = ResumeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [FormParser, MultiPartParser, JSONParser]
 
     def get_queryset(self):
-        return Resume.objects.filter(company=self.request.user)
+        user = self.request.user
+        if user.is_staff:
+            return Resume.objects.all()
+        return Resume.objects.filter(company=user)
+
+    def create(self, request, *args, **kwargs):
+        """
+        Accepts single file uploads ('file') or batch/folder uploads ('files' or multiple 'file').
+        """
+        # Collect all files whether the key is 'files' or 'file'
+        uploaded_files = request.FILES.getlist("files") or request.FILES.getlist("file")
+
+        if not uploaded_files:
+            return Response(
+                {
+                    "error": "No files provided. Send file(s) under the key 'files' or 'file'."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload = [
+            {
+                "file": file_obj,
+                "original_filename": file_obj.name,
+            }
+            for file_obj in uploaded_files
+        ]
+
+        # 1. Run all items through DRF Validation (validate_file, required fields, etc.)
+        serializer = self.get_serializer(data=payload, many=True)
+        serializer.is_valid(raise_exception=True)
+
+        # 2. Save through standard DRF/ORM save() pipeline (fires storage & signals)
+        serializer.save(company=request.user)
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     serializer_class = ApplicationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Application.objects.filter(job__company=self.request.user)
+        user = self.request.user
+        base_qs = Application.objects.select_related("job", "resume")
+        if user.is_staff:
+            return base_qs.all()
+        return base_qs.filter(job__company=user)
