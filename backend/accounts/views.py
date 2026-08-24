@@ -8,7 +8,10 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .serializers import CompanyRegisterSerializer, CompanyTokenRefreshSerializer
+from accounts.serializers import (
+    CompanyRegisterSerializer,
+    CompanyTokenRefreshSerializer,
+)
 
 # Create your views here.
 Company = get_user_model()

@@ -10,8 +10,12 @@ dependencies = [
     "django>=6.1",
     "djangorestframework>=3.18.0",
     "djangorestframework-simplejwt>=5.5.1",
+    "docling>=2.121.0",
     "psycopg-binary>=3.3.4",
     "psycopg[binary]>=3.3.4",
+    "pymupdf>=1.28.2",
     "python-dotenv>=1.2.2",
     "redis>=8.1.0",
+    "sentence-transformers>=6.0.0",
+    "transformers>=5.8.1",
 ]

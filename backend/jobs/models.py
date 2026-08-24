@@ -23,6 +23,9 @@ class Job(models.Model):
 class Resume(models.Model):
     class Status(models.TextChoices):
         PENDING = "PE", _("PENDING")
+        PROCESSING = "PR", _("PROCESSING")
+        DONE = "D", _("DONE")
+        FAILED = "F", _("FAILED")
 
     original_filename = models.CharField(max_length=200, blank=True, null=True)
     file = models.FileField()
@@ -31,7 +34,7 @@ class Resume(models.Model):
     company = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="resumes"
     )
-    # status
+    status = models.CharField(max_length=2, choices=Status, default=Status.PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
