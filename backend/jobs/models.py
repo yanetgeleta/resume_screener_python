@@ -59,3 +59,24 @@ class Application(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["job", "resume"], name="unique_job_resume")
         ]
+
+
+class ResumeChunk(models.Model):
+    resume = models.ForeignKey(Resume, on_delete=models.CASCADE, related_name="chunks")
+    chunk_text = models.TextField()
+    embedding = models.JSONField(default=list, blank=True)
+    chunk_index = models.PositiveIntegerField(
+        help_text="Order index of the chunk within the resume"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["chunk_index"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["resume", "chunk_index"], name="unique_resume_chunk_index"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"Resume {self.resume} Chunk {self.chunk_index}"
