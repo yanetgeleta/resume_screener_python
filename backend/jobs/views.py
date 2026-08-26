@@ -2,6 +2,8 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
+from jobs.tasks import process_resume
+
 from .models import Application, Job, Resume
 from .serializers import ApplicationSerializer, JobSerializer, ResumeSerializer
 
@@ -60,7 +62,9 @@ class ResumeViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         # 2. Save through standard DRF/ORM save() pipeline (fires storage & signals)
-        serializer.save(company=request.user)
+        created_resumes = serializer.save(company=request.user)
+        for resume in created_resumes:
+            process_resume.delay_on_commit(resume.id)
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
