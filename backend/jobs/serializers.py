@@ -12,6 +12,8 @@ class JobSerializer(serializers.ModelSerializer):
             "description",
             "required_experience_years",
             "skills",
+            "head_count",
+            "embedding",
             "company",
             "created_at",
             "is_active",

@@ -23,3 +23,9 @@ def embed_chunks(chunks: list[str]) -> list[list[float]]:
     model = _get_model()
     embeddings = model.encode(chunks, normalize_embeddings=True)
     return embeddings.tolist()
+
+
+def embed_text(text: str) -> list[float]:
+    model = _get_model()
+    embeddings = model.encode(text, normalize_embeddings=True)
+    return embeddings.tolist()

@@ -3,10 +3,11 @@ import logging
 from celery import shared_task
 from django.db import transaction
 
-from jobs.models import Resume, ResumeChunk
+from jobs.models import Job, Resume, ResumeChunk
 from jobs.services.chunking import chunk_text
-from jobs.services.embedding import embed_chunks
+from jobs.services.embedding import embed_chunks, embed_text
 from jobs.services.extraction import extract_text
+from jobs.services.retrieval import aggregate_top2_mean, fetch_candidate_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -41,3 +42,21 @@ def process_resume(resume_id):
         logger.exception("Failed to process resume ID %s: %s", resume_id, exc)
         Resume.objects.filter(id=resume_id).update(status=Resume.Status.FAILED)
         raise exc
+
+
+@shared_task
+def embed_job(job_id):
+    try:
+        job = Job.objects.get(id=job_id)
+        job_description = job.description
+        job_embedding: list[float] = embed_text(job_description)
+        job.embedding = job_embedding
+        job.save(update_fields=["embedding"])
+    except Exception as exc:
+        raise exc
+
+
+@shared_task
+def get_ranked_candidates(job, multiplier: int = 10) -> list[tuple[int, float]]:
+    chunks = fetch_candidate_chunks(job, multiplier=multiplier)
+    return aggregate_top2_mean(chunks)

@@ -2,7 +2,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
-from jobs.tasks import process_resume
+from jobs.tasks import embed_job, process_resume
 
 from .models import Application, Job, Resume
 from .serializers import ApplicationSerializer, JobSerializer, ResumeSerializer
@@ -20,7 +20,8 @@ class JobViewSet(viewsets.ModelViewSet):
         return Job.objects.filter(company=user)
 
     def perform_create(self, serializer):
-        serializer.save(company=self.request.user)
+        created_job = serializer.save(company=self.request.user)
+        embed_job.delay_on_commit(created_job.id)
 
 
 class ResumeViewSet(viewsets.ModelViewSet):

@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from pgvector.django import HnswIndex, VectorField
 
 # Create your models here.
 
@@ -8,8 +9,10 @@ from django.utils.translation import gettext_lazy as _
 class Job(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField()
-    required_experience_years = models.IntegerField()
+    required_experience_years = models.IntegerField(blank=True, null=True)
     skills = models.JSONField(default=dict, blank=True, null=True)
+    head_count = models.IntegerField()
+    embedding = VectorField(dimensions=384, blank=True, null=True)
     company = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="jobs"
     )
@@ -64,7 +67,9 @@ class Application(models.Model):
 class ResumeChunk(models.Model):
     resume = models.ForeignKey(Resume, on_delete=models.CASCADE, related_name="chunks")
     chunk_text = models.TextField()
-    embedding = models.JSONField(default=list, blank=True)
+    embedding = VectorField(
+        dimensions=384,
+    )
     chunk_index = models.PositiveIntegerField(
         help_text="Order index of the chunk within the resume"
     )
@@ -75,6 +80,17 @@ class ResumeChunk(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["resume", "chunk_index"], name="unique_resume_chunk_index"
+            )
+        ]
+        indexes = [
+            HnswIndex(
+                name="resume_chunk_embedding_hnsw_idx",
+                fields=["embedding"],
+                m=16,  # max connections per element (default 16)
+                ef_construction=64,  # size of dynamic candidate list (default 64)
+                opclasses=[
+                    "vector_l2_ops"
+                ],  # or "vector_cosine_ops" for cosine distance
             )
         ]
 
