@@ -12,6 +12,7 @@ dependencies = [
     "djangorestframework>=3.18.0",
     "djangorestframework-simplejwt>=5.5.1",
     "docling>=2.121.0",
+    "pgvector>=0.5.0",
     "psycopg-binary>=3.3.4",
     "psycopg[binary]>=3.3.4",
     "pymupdf>=1.28.2",
