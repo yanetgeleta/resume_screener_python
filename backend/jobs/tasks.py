@@ -3,7 +3,7 @@ import logging
 from celery import shared_task
 from django.db import transaction
 
-from jobs.models import Job, Resume, ResumeChunk
+from jobs.models import Application, Job, Resume, ResumeChunk
 from jobs.services.chunking import chunk_text
 from jobs.services.embedding import embed_chunks, embed_text
 from jobs.services.extraction import extract_text
@@ -57,6 +57,36 @@ def embed_job(job_id):
 
 
 @shared_task
-def get_ranked_candidates(job, multiplier: int = 10) -> list[tuple[int, float]]:
-    chunks = fetch_candidate_chunks(job, multiplier=multiplier)
-    return aggregate_top2_mean(chunks)
+def recompute_job_rankings(job_id, multiplier: int = 10):
+    try:
+        job = Job.objects.get(id=job_id)
+    except Job.DoesNotExist:
+        logger.error("Job with id %s does not exist.", job_id)
+        return
+
+    job.ranking_status = Job.RankingStatus.COMPUTING
+    job.save(update_fields=["ranking_status"])
+
+    try:
+        chunks = fetch_candidate_chunks(job, multiplier=multiplier)
+        ranked = aggregate_top2_mean(chunks)
+        score_by_resume = dict(ranked)
+
+        all_applications = Application.objects.filter(job=job)
+        to_update = []
+        for app in all_applications:
+            app.retrieval_score = score_by_resume.get(
+                app.resume_id
+            )  # None if not in this round's fetch
+            to_update.append(app)
+
+        with transaction.atomic():
+            Application.objects.bulk_update(to_update, ["retrieval_score"])
+            job.ranking_status = Job.RankingStatus.RETRIEVAL_DONE
+            job.save(update_fields=["ranking_status"])
+
+    except Exception as exc:
+        logger.exception("Ranking failed for job %s: %s", job_id, exc)
+        job.ranking_status = Job.RankingStatus.FAILED
+        job.save(update_fields=["ranking_status"])
+        raise exc

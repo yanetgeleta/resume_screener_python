@@ -1,0 +1,15 @@
+{
+  "folders": [
+    {
+      "name": "Backend (Django)",
+      "path": "backend",
+    },
+    {
+      "name": "Frontend (Next.js)",
+      "path": "frontend",
+    },
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "${workspaceFolder:Backend (Django)}/.venv/bin/python",
+  },
+}

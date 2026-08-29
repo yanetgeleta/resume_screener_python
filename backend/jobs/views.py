@@ -1,8 +1,9 @@
 from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
-from jobs.tasks import embed_job, process_resume
+from jobs.tasks import embed_job, process_resume, recompute_job_rankings
 
 from .models import Application, Job, Resume
 from .serializers import ApplicationSerializer, JobSerializer, ResumeSerializer
@@ -22,6 +23,20 @@ class JobViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         created_job = serializer.save(company=self.request.user)
         embed_job.delay_on_commit(created_job.id)
+
+    @action(detail=True, methods=["post"])
+    def recompute(self, request, pk=None):
+        job = self.get_object()
+        job.ranking_status = Job.RankingStatus.COMPUTING
+        job.save(update_fields=["ranking_status"])
+        recompute_job_rankings.delay_on_commit(job.id)
+        return Response(
+            {
+                "detail": "Ranking recomputation started.",
+                "ranking_status": job.ranking_status,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class ResumeViewSet(viewsets.ModelViewSet):
@@ -80,3 +95,6 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         if user.is_staff:
             return base_qs.all()
         return base_qs.filter(job__company=user)
+
+    def perform_create(self, serializer):
+        created_application = serializer.save()

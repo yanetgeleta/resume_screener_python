@@ -13,7 +13,7 @@ def fetch_candidate_chunks(job, multiplier: int = 10):
     """
     over_fetch_n = job.head_count * multiplier
     return list(
-        ResumeChunk.objects.filter(resume__application__job=job)
+        ResumeChunk.objects.filter(resume__applications__job=job)
         .annotate(distance=MaxInnerProduct("embedding", job.embedding))
         .order_by("distance")[:over_fetch_n]
         .select_related("resume")

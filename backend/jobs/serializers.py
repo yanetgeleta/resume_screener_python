@@ -68,6 +68,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             "resume",
             "status",
             "llm_profile",
+            "retrieval_score",
             "final_score",
             "created_at",
         ]

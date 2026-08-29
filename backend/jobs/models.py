@@ -7,6 +7,19 @@ from pgvector.django import HnswIndex, VectorField
 
 
 class Job(models.Model):
+    class RankingStatus(models.TextChoices):
+        NOT_STARTED = "not_started", "Not Started"
+        COMPUTING = "computing", "Computing"
+        RETRIEVAL_DONE = "retrieval_done", "Retrieval Done"
+        DONE = "done", "Done"
+        FAILED = "failed", "Failed"
+
+    ranking_status = models.CharField(
+        max_length=20,
+        choices=RankingStatus.choices,
+        default=RankingStatus.NOT_STARTED,
+    )
+
     title = models.CharField(max_length=200)
     description = models.TextField()
     required_experience_years = models.IntegerField(blank=True, null=True)
@@ -53,6 +66,7 @@ class Application(models.Model):
     resume = models.ForeignKey(
         Resume, on_delete=models.CASCADE, related_name="applications"
     )
+    retrieval_score = models.FloatField(null=True, blank=True)
     status = models.CharField(max_length=2, choices=Status, default=Status.NORMAL)
     llm_profile = models.JSONField(default=dict, blank=True, null=True)
     final_score = models.FloatField(blank=True, null=True)
@@ -88,9 +102,7 @@ class ResumeChunk(models.Model):
                 fields=["embedding"],
                 m=16,  # max connections per element (default 16)
                 ef_construction=64,  # size of dynamic candidate list (default 64)
-                opclasses=[
-                    "vector_l2_ops"
-                ],  # or "vector_cosine_ops" for cosine distance
+                opclasses=["vector_ip_ops"],
             )
         ]
 
