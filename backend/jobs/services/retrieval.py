@@ -5,7 +5,7 @@ from pgvector.django import MaxInnerProduct
 from jobs.models import ResumeChunk
 
 
-def fetch_candidate_chunks(job, multiplier: int = 10):
+def fetch_candidate_chunks(job, multiplier: int = 4):
     """
     Over-fetch resume chunks for a job, tenant-scoped through
     Resume -> Application -> Job. Ordered by MaxInnerProduct distance

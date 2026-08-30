@@ -32,6 +32,7 @@ class ResumeSerializer(serializers.ModelSerializer):
             "file",
             "skills",
             "experience_years",
+            "full_text",
             "company",
             "created_at",
         ]
