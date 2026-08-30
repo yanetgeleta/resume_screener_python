@@ -23,8 +23,8 @@ class Job(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField()
     required_experience_years = models.IntegerField(blank=True, null=True)
-    skills = models.JSONField(default=dict, blank=True, null=True)
-    head_count = models.IntegerField()
+    skills = models.JSONField(default=None, blank=True, null=True)
+    head_count = models.IntegerField(blank=True, null=True)
     embedding = VectorField(dimensions=384, blank=True, null=True)
     company = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="jobs"
@@ -45,7 +45,7 @@ class Resume(models.Model):
 
     original_filename = models.CharField(max_length=200, blank=True, null=True)
     file = models.FileField()
-    skills = models.JSONField(default=dict, blank=True, null=True)
+    skills = models.JSONField(default=None, blank=True, null=True)
     experience_years = models.IntegerField(null=True, blank=True)
     full_text = models.TextField(blank=True, null=True)
     company = models.ForeignKey(

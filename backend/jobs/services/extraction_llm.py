@@ -3,12 +3,13 @@
 
 import json
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
-from backend.jobs import groq_client
+from jobs import groq_client
 
 
 class SkillsAndExperienceYears(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     skills: list[str]
     experience_years: int | None
 

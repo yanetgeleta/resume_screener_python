@@ -1,18 +1,21 @@
+import json
 import logging
 import math
 
 import groq
 from celery import chord, group, shared_task
 from django.db import transaction
+from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
 
-from backend.jobs.services.extraction_llm import extract_skills_experience
-from backend.jobs.services.scoring import score_application
+from jobs import groq_client
 from jobs.models import Application, Job, Resume, ResumeChunk
 from jobs.services.chunking import chunk_text
 from jobs.services.embedding import embed_chunks, embed_text
 from jobs.services.extraction import extract_text
+from jobs.services.extraction_llm import extract_skills_experience
 from jobs.services.retrieval import aggregate_top2_mean, fetch_candidate_chunks
+from jobs.services.scoring import score_application
 
 logger = logging.getLogger(__name__)
 
@@ -235,3 +238,123 @@ def finalize_scoring(_, job_id):
 
     job.ranking_status = Job.RankingStatus.DONE
     job.save(update_fields=["ranking_status"])
+
+    scored_applications = Application.objects.filter(
+        job=job, final_score__isnull=False
+    ).order_by("-final_score")[: job.head_count]
+    group(
+        generate_application_profile_task.s(app.id) for app in scored_applications
+    ).apply_async()
+
+
+class LLM_Profile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    summary: str
+    strengths: list[str]
+    gaps: list[str]
+
+
+PROFILE_SYSTEM_PROMPT = (
+    "You are writing a hiring summary for a recruiter based on pre-computed "
+    "match data. Do not invent skills, experience, or scores not given to you. "
+    "The final_score is a weighted composite, not a percentage — do not describe "
+    "it as a percentage. Write the summary in a neutral, factual tone."
+)
+
+
+def _build_profile_user_prompt(
+    resume_skills,
+    job_skills,
+    resume_exp_years,
+    job_req_years,
+    retrieval_score,
+    final_score,
+) -> str:
+    matched = sorted(
+        set(s.lower() for s in resume_skills) & set(s.lower() for s in job_skills)
+    )
+    missing = sorted(
+        set(s.lower() for s in job_skills) - set(s.lower() for s in resume_skills)
+    )
+    return (
+        f"Candidate skills: {resume_skills}\n"
+        f"Required skills: {job_skills}\n"
+        f"Matched skills: {matched}\n"
+        f"Missing skills: {missing}\n"
+        f"Candidate years of experience: {resume_exp_years}\n"
+        f"Required years of experience: {job_req_years}\n"
+        f"Vector similarity to job description (range -1 to 1): {retrieval_score}\n"
+        f"Final weighted match score: {final_score}\n\n"
+        "Write a short summary, a list of strengths, and a list of gaps."
+    )
+
+
+@shared_task(
+    autoretry_for=(
+        groq.APIConnectionError,
+        groq.RateLimitError,
+        groq.InternalServerError,
+    ),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_kwargs={"max_retries": 5},
+)
+def generate_application_profile_task(application_id):
+    try:
+        application = Application.objects.select_related("resume", "job").get(
+            id=application_id
+        )
+    except Application.DoesNotExist:
+        logger.error(
+            "Application %s does not exist. Skipping profile generation.",
+            application_id,
+        )
+        return
+    if application.llm_profile:
+        logger.info(
+            "Application %s already has llm profile. Skipping profile generation.",
+            application_id,
+        )
+        return
+
+    client = groq_client.groq_client_instance
+    resume_skills = application.resume.skills
+    job_skills = application.job.skills
+    job_req_years = application.job.required_experience_years
+    resume_exp_years = application.resume.experience_years
+    retrieval_score = -application.retrieval_score
+    final_score = application.final_score
+
+    user_content = _build_profile_user_prompt(
+        resume_skills,
+        job_skills,
+        resume_exp_years,
+        job_req_years,
+        retrieval_score,
+        final_score,
+    )
+    try:
+        llm_response = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[
+                {"role": "system", "content": PROFILE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "llm_profile_builder",
+                    "strict": True,
+                    "schema": LLM_Profile.model_json_schema(),
+                },
+            },
+        )
+        raw_result = json.loads(llm_response.choices[0].message.content or "{}")
+        result = LLM_Profile.model_validate(raw_result)
+    except PydanticValidationError as val_err:
+        logger.error(
+            "Pydantic validation failed for application %s: %s", application_id, val_err
+        )
+        return
+    application.llm_profile = result.model_dump()
+    application.save(update_fields=["llm_profile"])

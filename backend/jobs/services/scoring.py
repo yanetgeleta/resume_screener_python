@@ -1,6 +1,6 @@
 import logging
 
-from backend.jobs.models import Application
+from jobs.models import Application
 
 logger = logging.getLogger(__name__)
 
