@@ -69,7 +69,7 @@ class Application(models.Model):
     )
     retrieval_score = models.FloatField(null=True, blank=True)
     status = models.CharField(max_length=2, choices=Status, default=Status.NORMAL)
-    llm_profile = models.JSONField(default=dict, blank=True, null=True)
+    llm_profile = models.JSONField(default=None, blank=True, null=True)
     final_score = models.FloatField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
