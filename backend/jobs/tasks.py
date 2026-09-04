@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def process_resume(resume_id):
+    """Extracts text from resume, chunks it, embeds each chunk, and saves the chunks in a separate table"""
     try:
         resume = Resume.objects.get(id=resume_id)
         resume.status = Resume.Status.PROCESSING
@@ -57,6 +58,7 @@ def process_resume(resume_id):
 
 @shared_task
 def embed_job(job_id):
+    """Embeds the job at creation. No chunking for job"""
     try:
         job = Job.objects.get(id=job_id)
         job_description = job.description
@@ -69,6 +71,7 @@ def embed_job(job_id):
 
 @shared_task
 def recompute_job_rankings(job_id, multiplier: int = 5):
+    """gets the top chunks with multiplier, saves the retrieval score for 2X and makes a profile for the exact head_count"""
     try:
         job = Job.objects.get(id=job_id)
     except Job.DoesNotExist:
@@ -125,6 +128,7 @@ def recompute_job_rankings(job_id, multiplier: int = 5):
     retry_kwargs={"max_retries": 5},
 )
 def extract_resume_profile(resume_id):
+    """Extracts skills and experience from resumes and updates the skills and experience_years field"""
     SYSTEM_PROMPT = (
         "You are a resume parser. Extract only skills and experience explicitly "
         "stated or directly inferable from dates in the text. Do not invent "
@@ -171,6 +175,7 @@ def extract_resume_profile(resume_id):
     retry_kwargs={"max_retries": 5},
 )
 def extract_job_profile(job_id):
+    """Extracts skills and experiene for a job and updates the table"""
     SYSTEM_PROMPT = (
         "You are a job description parser. Extract only skills, tools, and qualifications "
         "explicitly stated as required or preferred in the text. Do not invent skills "
@@ -300,6 +305,7 @@ def _build_profile_user_prompt(
     retry_kwargs={"max_retries": 5},
 )
 def generate_application_profile_task(application_id):
+    """builds a profile for the exact head_count, using all the information so far from applications process"""
     try:
         application = Application.objects.select_related("resume", "job").get(
             id=application_id
