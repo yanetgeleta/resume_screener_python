@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo 'export NEON_PROJECT_ID="cold-sky-57169956"' >> ~/.zshrc
+source ~/.zshrc
+
 # Requires: neonctl installed + authenticated, NEON_PROJECT_ID set
 : "${NEON_PROJECT_ID:?Set NEON_PROJECT_ID in your environment}"
 

@@ -1,5 +1,6 @@
-from dotenv import load_dotenv
+from django.conf import settings
 from groq import Groq
 
-load_dotenv()
-groq_client_instance = Groq()
+groq_client_instance = Groq(
+    api_key=getattr(settings, "GROQ_API_KEY", "mock-key-for-tests")
+)

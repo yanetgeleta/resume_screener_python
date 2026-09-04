@@ -2,18 +2,21 @@
 
 import pgvector.django.vector
 from django.db import migrations
+from pgvector.django import VectorExtension  # 1. Import VectorExtension
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('jobs', '0005_resumechunk'),
+        ("jobs", "0005_resumechunk"),
     ]
 
     operations = [
+        VectorExtension(),  # 2. Runs `CREATE EXTENSION IF NOT EXISTS vector` first
         migrations.AddField(
-            model_name='resumechunk',
-            name='embedding_fr',
-            field=pgvector.django.vector.VectorField(blank=True, dimensions=384, null=True),
+            model_name="resumechunk",
+            name="embedding_fr",
+            field=pgvector.django.vector.VectorField(
+                blank=True, dimensions=384, null=True
+            ),
         ),
     ]

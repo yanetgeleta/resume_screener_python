@@ -5,7 +5,7 @@ from jobs.models import Application, Job, Resume, ResumeChunk
 
 
 class CompanyFactory(factory.django.DjangoModelFactory):
-    class Meta(factory.django.DjangoModelFactory.Meta):
+    class Meta:
         model = Company
 
     email = Faker("email")
@@ -25,7 +25,7 @@ class CompanyFactory(factory.django.DjangoModelFactory):
 # Job Factories
 # ---------------------------------------------------------------------------
 class JobFactory(factory.django.DjangoModelFactory):
-    class Meta(factory.django.DjangoModelFactory.Meta):
+    class Meta:
         model = Job
 
     company = factory.SubFactory(CompanyFactory)
@@ -56,7 +56,7 @@ class SkillsJobFactory(JobFactory):
 # Resume Factories
 # ---------------------------------------------------------------------------
 class ResumeFactory(factory.django.DjangoModelFactory):
-    class Meta(factory.django.DjangoModelFactory.Meta):
+    class Meta:
         model = Resume
 
     company = factory.SubFactory(CompanyFactory)
@@ -88,7 +88,7 @@ class SkillsResumeFactory(ResumeFactory):
 # Application Factory
 # ---------------------------------------------------------------------------
 class ApplicationFactory(factory.django.DjangoModelFactory):
-    class Meta(factory.django.DjangoModelFactory.Meta):
+    class Meta:
         model = Application
 
     job = factory.SubFactory(JobFactory)
@@ -109,7 +109,7 @@ class ApplicationFactory(factory.django.DjangoModelFactory):
 # Resume Chunk Factory (for vector search tests)
 # ---------------------------------------------------------------------------
 class ResumeChunkFactory(factory.django.DjangoModelFactory):
-    class Meta(factory.django.DjangoModelFactory.Meta):
+    class Meta:
         model = ResumeChunk
 
     resume = factory.SubFactory(ResumeFactory)

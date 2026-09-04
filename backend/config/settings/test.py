@@ -30,3 +30,6 @@ CACHES = {
 
 # EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 MAILERS = {"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}}
+
+
+GROQ_API_KEY = "dummy-test-key-never-call-network"

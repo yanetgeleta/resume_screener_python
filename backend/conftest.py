@@ -1,7 +1,11 @@
 # conftest.py  (backend/ root, next to pyproject.toml)
 
+import os
+
 import numpy as np
 import pytest
+
+os.environ.setdefault("GROQ_API_KEY", "gsk_test_mock_dummy_key_12345")
 
 
 @pytest.fixture
