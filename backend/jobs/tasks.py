@@ -217,10 +217,13 @@ def extract_job_profile(job_id):
 
 
 @shared_task
-def finalize_scoring(_, job_id):
+def finalize_scoring(*args, job_id=None):
     """Chord callback — runs after all extract_resume_profile tasks in the group finish.
     Loops applications for job, calls score_application, trims to head_count,
     sets ranking_status = DONE."""
+    if job_id is None and args:
+        job_id = args[-1]
+
     try:
         job = Job.objects.get(id=job_id)
     except Job.DoesNotExist:

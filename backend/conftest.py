@@ -4,8 +4,11 @@ import os
 
 import numpy as np
 import pytest
+from django.conf import settings
 
 os.environ.setdefault("GROQ_API_KEY", "gsk_test_mock_dummy_key_12345")
+
+pytest_plugins = ("celery.contrib.pytest",)
 
 
 @pytest.fixture
@@ -44,6 +47,37 @@ def mock_groq_client_extraction(mocker):
 
 
 @pytest.fixture
+def mock_groq_client_dual(mocker):
+    """
+    For tests where both extract_resume_profile AND generate_application_profile_task
+    fire in the same run (e.g. chord -> finalize_scoring -> trailing profile group).
+    Picks the response shape based on which prompt was sent.
+    """
+    mock_client = mocker.patch("jobs.groq_client.groq_client_instance")
+
+    def _respond(*args, **kwargs):
+        messages = kwargs.get("messages", [])
+        prompt_text = " ".join(m.get("content", "") for m in messages)
+        response = mocker.MagicMock()
+        response.choices = [mocker.MagicMock()]
+        if "strengths" in prompt_text or "gaps" in prompt_text:
+            response.choices[0].message.content = (
+                '{"summary": "Strong backend candidate with relevant experience.", '
+                '"strengths": ["python", "django"], "gaps": ["no docker experience"]}'
+            )
+        else:
+            response.choices[
+                0
+            ].message.content = (
+                '{"skills": ["python", "django"], "experience_years": 3}'
+            )
+        return response
+
+    mock_client.chat.completions.create.side_effect = _respond
+    return mock_client
+
+
+@pytest.fixture
 def mock_sentence_transformer(mocker):
     """
     Patches .encode() where it's CALLED: jobs/services/embedding.py
@@ -54,3 +88,16 @@ def mock_sentence_transformer(mocker):
     mock_encode = mocker.patch("jobs.services.embedding._model.encode")
     mock_encode.return_value = normalized_vector
     return mock_encode
+
+
+@pytest.fixture(scope="session")
+def celery_config():
+    return {
+        "broker_url": settings.CELERY_BROKER_URL,
+        "result_backend": settings.CELERY_RESULT_BACKEND,
+    }
+
+
+@pytest.fixture(scope="session")
+def celery_includes():
+    return ["jobs.tasks"]
