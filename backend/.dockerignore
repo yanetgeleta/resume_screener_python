@@ -1,0 +1,12 @@
+.env
+.git
+.gitignore
+.neon
+.pytest_cache
+__pycache__
+**/__pycache__
+*.pyc
+.venv
+tests/
+.python-version
+README.md

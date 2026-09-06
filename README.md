@@ -47,6 +47,7 @@ An intelligent, enterprise-ready, multi-tenant resume screening and candidate ra
 Modern hiring teams receive hundreds of resumes per job posting. Traditional keyword filtering misses qualified candidates who phrase their experience differently, while brute-force LLM evaluation of every resume is cost-prohibitive and slow.
 
 **Resume Screener AI** solves this with a **two-tier hybrid retrieval architecture**:
+
 1. **Sub-second Vector Search:** Leverages PostgreSQL `pgvector` with HNSW indexing on dense 384-dimensional embeddings to narrow hundreds of candidates down to the top relevant candidates.
 2. **Just-In-Time (JIT) LLM Analysis:** Executes structured Pydantic extraction on qualified candidates via Groq's high-speed inference engine (`openai/gpt-oss-120b`).
 3. **Multi-Factor Scoring:** Combines semantic similarity (65%), exact skill alignment (20%), and years of experience (15%) into an explainable composite score with tailored recruiter dossiers.
@@ -111,21 +112,27 @@ flowchart TD
 ## ⚙️ Screening & Ranking Pipeline
 
 ### 1. Ingestion & Semantic Chunking
+
 When a PDF resume is uploaded:
+
 - **PyMuPDF (`fitz`)** extracts raw textual content.
 - The text is tokenized using `AutoTokenizer` from `sentence-transformers/all-MiniLM-L6-v2`.
 - A sliding window splits the document into chunks of **200 tokens with a 20-token overlap**.
 - Each chunk is embedded into a **384-dimensional normalized vector** and stored in `ResumeChunk` with an HNSW index.
 
 ### 2. Dense Vector Retrieval (HNSW)
+
 When candidate ranking is triggered:
+
 - The job description embedding is compared against candidate resume chunks using **Max Inner Product** (cosine similarity on normalized vectors).
 - An over-fetch factor ($k = \text{head\_count} \times 5$) retrieves top candidate chunks scoped strictly to the tenant's applicants.
 - **Top-2 Mean Aggregation:** To avoid single-paragraph bias, each resume's retrieval score is computed as the average distance of its **top 2 best-matching chunks**:
   $$\text{Retrieval Score} = \frac{d_1 + d_2}{2}$$
 
 ### 3. JIT Profile Extraction via Groq LLM
+
 Instead of spending LLM tokens on every applicant:
+
 - Extraction runs only on candidates qualifying in the top candidate pool ($2 \times \text{head\_count}$).
 - A Celery **`chord`** parallelizes extraction across candidate resumes using Groq's high-throughput `openai/gpt-oss-120b` endpoint:
   ```json
@@ -137,11 +144,13 @@ Instead of spending LLM tokens on every applicant:
 - Guaranteed type safety through Pydantic strict JSON schema validation.
 
 ### 4. Composite Scoring Formulation
+
 The `finalize_scoring` task evaluates every applicant using a deterministic composite formula:
 
 $$\text{Final Score} = (65 \times S_{\text{retrieval}}) + (20 \times S_{\text{skills}}) + (15 \times S_{\text{experience}})$$
 
 Where:
+
 - **$S_{\text{retrieval}}$**: Normalized cosine similarity score (range $[0, 1]$).
 - **$S_{\text{skills}}$**: Exact matched skills ratio:
   $$S_{\text{skills}} = \frac{|\text{Candidate Skills} \cap \text{Required Skills}|}{|\text{Required Skills}|}$$
@@ -149,7 +158,9 @@ Where:
   $$S_{\text{experience}} = \min\left(1.0, \frac{\text{Candidate Experience Years}}{\text{Required Experience Years}}\right)$$
 
 ### 5. Recruiter Dossier Generation
+
 For candidates within the final `head_count`:
+
 - An asynchronous task queries Groq with the match breakdown (matched skills, missing skills, vector distance, experience delta).
 - Produces an executive dossier containing:
   - **Summary**: Recruiter-focused neutral overview.
@@ -160,19 +171,19 @@ For candidates within the final `head_count`:
 
 ## 🛠 Tech Stack
 
-| Domain | Technology | Purpose |
-| :--- | :--- | :--- |
-| **Backend Framework** | Django 6.1 + Django REST Framework | Core API, ORM, multi-tenant business logic |
-| **Authentication** | SimpleJWT + Argon2 | Secure token management, hashing, Redis revocation |
-| **Task Queue & Async** | Celery 5.6 + Redis | Distributed async processing, chord/group pipelines |
-| **Primary Database** | PostgreSQL 16+ / Neon Serverless | Relational storage with database branch isolation |
-| **Vector Search** | `pgvector` (HNSW) | High-speed dense vector search on embeddings |
-| **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` | 384-dimensional CPU/GPU local dense embeddings |
-| **Document Processing**| PyMuPDF (`fitz`) + HuggingFace Tokenizers | PDF text extraction and token-sliding window chunking |
-| **LLM Inference** | Groq (`openai/gpt-oss-120b`) | Structured entity extraction & recruiter profiling |
-| **Validation** | Pydantic v2 | Strict JSON schema parsing and response validation |
-| **Package Manager** | `uv` | Ultra-fast Python package and virtualenv manager |
-| **Testing** | `pytest`, `pytest-django`, `factory-boy` | Unit, integration, and transactional chord testing |
+| Domain                  | Technology                                | Purpose                                               |
+| :---------------------- | :---------------------------------------- | :---------------------------------------------------- |
+| **Backend Framework**   | Django 6.1 + Django REST Framework        | Core API, ORM, multi-tenant business logic            |
+| **Authentication**      | SimpleJWT + Argon2                        | Secure token management, hashing, Redis revocation    |
+| **Task Queue & Async**  | Celery 5.6 + Redis                        | Distributed async processing, chord/group pipelines   |
+| **Primary Database**    | PostgreSQL 16+ / Neon Serverless          | Relational storage with database branch isolation     |
+| **Vector Search**       | `pgvector` (HNSW)                         | High-speed dense vector search on embeddings          |
+| **Embeddings**          | `sentence-transformers/all-MiniLM-L6-v2`  | 384-dimensional CPU/GPU local dense embeddings        |
+| **Document Processing** | PyMuPDF (`fitz`) + HuggingFace Tokenizers | PDF text extraction and token-sliding window chunking |
+| **LLM Inference**       | Groq (`openai/gpt-oss-120b`)              | Structured entity extraction & recruiter profiling    |
+| **Validation**          | Pydantic v2                               | Strict JSON schema parsing and response validation    |
+| **Package Manager**     | `uv`                                      | Ultra-fast Python package and virtualenv manager      |
+| **Testing**             | `pytest`, `pytest-django`, `factory-boy`  | Unit, integration, and transactional chord testing    |
 
 ---
 
@@ -315,11 +326,13 @@ python manage.py createsuperuser
 You need three terminal tabs or a process supervisor:
 
 #### 1. Start Redis
+
 ```bash
 redis-server
 ```
 
 #### 2. Start Celery Worker
+
 The worker preloads the `sentence-transformers/all-MiniLM-L6-v2` model into memory on startup:
 
 ```bash
@@ -328,6 +341,7 @@ uv run celery -A config worker --loglevel=info -c 4
 ```
 
 #### 3. Start Django Development Server
+
 ```bash
 cd backend
 uv run python manage.py runserver 0.0.0.0:8000
@@ -340,20 +354,22 @@ The API will now be available at `http://127.0.0.1:8000/`.
 ## 📡 API Reference
 
 All requests outside of registration and login require the `Authorization` header:
+
 ```http
 Authorization: Bearer <access_token>
 ```
 
 ### Authentication
 
-| Method | Endpoint | Description | Auth Required |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/auth/register/` | Register a new company account | No |
-| `POST` | `/api/auth/login/` | Obtain JWT access and refresh token pair | No |
-| `POST` | `/api/auth/refresh/` | Refresh access token (validates against blocklist) | No |
-| `POST` | `/api/auth/logout/` | Blacklist refresh token in Redis | Yes |
+| Method | Endpoint              | Description                                        | Auth Required |
+| :----- | :-------------------- | :------------------------------------------------- | :------------ |
+| `POST` | `/api/auth/register/` | Register a new company account                     | No            |
+| `POST` | `/api/auth/login/`    | Obtain JWT access and refresh token pair           | No            |
+| `POST` | `/api/auth/refresh/`  | Refresh access token (validates against blocklist) | No            |
+| `POST` | `/api/auth/logout/`   | Blacklist refresh token in Redis                   | Yes           |
 
 #### Registration Request Example:
+
 ```json
 POST /api/auth/register/
 {
@@ -367,15 +383,16 @@ POST /api/auth/register/
 
 ### Jobs API
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/jobs/` | List jobs owned by authenticated company |
-| `POST` | `/api/jobs/` | Create a job posting (triggers embedding & skill extraction) |
-| `GET` | `/api/jobs/{id}/` | Retrieve job details and ranking status |
-| `PATCH` | `/api/jobs/{id}/` | Update job details |
-| `POST` | `/api/jobs/{id}/recompute/` | **Trigger AI candidate ranking pipeline** |
+| Method  | Endpoint                    | Description                                                  |
+| :------ | :-------------------------- | :----------------------------------------------------------- |
+| `GET`   | `/api/jobs/`                | List jobs owned by authenticated company                     |
+| `POST`  | `/api/jobs/`                | Create a job posting (triggers embedding & skill extraction) |
+| `GET`   | `/api/jobs/{id}/`           | Retrieve job details and ranking status                      |
+| `PATCH` | `/api/jobs/{id}/`           | Update job details                                           |
+| `POST`  | `/api/jobs/{id}/recompute/` | **Trigger AI candidate ranking pipeline**                    |
 
 #### Create Job Posting:
+
 ```json
 POST /api/jobs/
 {
@@ -387,10 +404,13 @@ POST /api/jobs/
 ```
 
 #### Trigger Candidate Ranking:
+
 ```http
 POST /api/jobs/{id}/recompute/
 ```
+
 **Response (`202 Accepted`):**
+
 ```json
 {
   "detail": "Ranking recomputation started.",
@@ -402,14 +422,16 @@ POST /api/jobs/{id}/recompute/
 
 ### Resumes API
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/resumes/` | List resumes uploaded by company |
-| `POST` | `/api/resumes/` | Upload single or batch PDF resumes (`multipart/form-data`) |
-| `GET` | `/api/resumes/{id}/` | View resume parsing status and extracted skills |
+| Method | Endpoint             | Description                                                |
+| :----- | :------------------- | :--------------------------------------------------------- |
+| `GET`  | `/api/resumes/`      | List resumes uploaded by company                           |
+| `POST` | `/api/resumes/`      | Upload single or batch PDF resumes (`multipart/form-data`) |
+| `GET`  | `/api/resumes/{id}/` | View resume parsing status and extracted skills            |
 
 #### Upload Resumes (Multipart):
+
 Send one or multiple files under the key `files` or `file`:
+
 ```bash
 curl -X POST http://127.0.0.1:8000/api/resumes/ \
   -H "Authorization: Bearer $TOKEN" \
@@ -421,13 +443,14 @@ curl -X POST http://127.0.0.1:8000/api/resumes/ \
 
 ### Applications API
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/applications/` | List applications with nested job and resume details |
-| `POST` | `/api/applications/` | Associate a resume with a job posting |
-| `GET` | `/api/applications/{id}/` | Inspect scores, rankings, and recruiter dossier |
+| Method | Endpoint                  | Description                                          |
+| :----- | :------------------------ | :--------------------------------------------------- |
+| `GET`  | `/api/applications/`      | List applications with nested job and resume details |
+| `POST` | `/api/applications/`      | Associate a resume with a job posting                |
+| `GET`  | `/api/applications/{id}/` | Inspect scores, rankings, and recruiter dossier      |
 
 #### Application Result Representation:
+
 ```json
 {
   "id": 42,
@@ -452,9 +475,7 @@ curl -X POST http://127.0.0.1:8000/api/resumes/ \
       "Demonstrated production work with Redis and Celery",
       "Strong vector alignment to system architecture needs"
     ],
-    "gaps": [
-      "No direct mention of Kubernetes or microservice orchestration"
-    ]
+    "gaps": ["No direct mention of Kubernetes or microservice orchestration"]
   },
   "created_at": "2026-09-05T21:30:00Z"
 }

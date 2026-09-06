@@ -15,15 +15,14 @@ dependencies = [
     "factory-boy>=3.3.3",
     "groq>=1.7.0",
     "pgvector>=0.5.0",
-    "psycopg-binary>=3.3.4",
     "psycopg[binary]>=3.3.4",
     "pydantic>=2.13.4",
     "pymupdf>=1.28.2",
-    "pytest-django>=4.14.0",
-    "pytest-mock>=3.15.1",
     "python-dotenv>=1.2.2",
     "redis>=8.1.0",
     "sentence-transformers>=6.0.0",
+    "torch>=2.14.0",
+    "torchvision>=0.29.0",
     "transformers>=5.8.1",
 ]
 
@@ -32,6 +31,7 @@ dev = [
     "pytest>=9.1.1",
     "pytest-django>=4.14.0",
     "pytest-socket>=0.8.1",
+    "pytest-mock>=3.15.1",
 ]
 
 [tool.pytest.ini_options]
@@ -39,3 +39,16 @@ DJANGO_SETTINGS_MODULE = "config.settings.test"
 python_files = ["test_*.py", "*_test.py", "tests.py"]
 pythonpath = ["."]
 addopts = []
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu" },
+]
+torchvision = [
+  { index = "pytorch-cpu" },
+]
