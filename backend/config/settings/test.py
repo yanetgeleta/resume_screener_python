@@ -28,7 +28,6 @@ CACHES = {
     }
 }
 
-# EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 MAILERS = {"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}}
 
 

@@ -22,7 +22,9 @@ RUN uv sync --frozen --no-cache
 FROM python:3.13-slim AS runtime
 
 RUN groupadd --system --gid 10001 customgroup && \
-    useradd --system --uid 10001 --gid customgroup --no-create-home customuser
+    useradd --system --uid 10001 --gid customgroup --create-home --home-dir /home/customuser customuser && \
+    mkdir -p /home/customuser/.cache/huggingface /home/customuser/.gunicorn && \
+    chown -R customuser:customgroup /home/customuser
 
 WORKDIR /app
 
@@ -31,6 +33,7 @@ WORKDIR /app
 COPY --chown=customuser:customgroup --from=builder /app /app
 
 ENV PATH="/app/.venv/bin:$PATH" \
+    HOME="/home/customuser" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
