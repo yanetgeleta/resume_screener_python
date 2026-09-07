@@ -21,10 +21,17 @@ RUN uv sync --frozen --no-cache
 
 FROM python:3.13-slim AS runtime
 
+RUN groupadd --system --gid 10001 customgroup && \
+    useradd --system --uid 10001 --gid customgroup --no-create-home customuser
+
 WORKDIR /app
 
-COPY --from=builder /app/.venv /app/.venv
+# COPY --from=builder /app/.venv /app/.venv
 
-COPY --from=builder /app /app
+COPY --chown=customuser:customgroup --from=builder /app /app
 
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+USER customuser
