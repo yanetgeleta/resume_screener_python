@@ -53,7 +53,7 @@ jobs:
         run: |
           uv run pytest
       - name: Delete Neon branch
-        uses: neondatabase/delete-branch-action@v6
+        uses: neondatabase/delete-branch-action@v3
         if: always()
         with:
           project_id: cold-sky-57169956
