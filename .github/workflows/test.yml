@@ -1,0 +1,61 @@
+name: CI Tests
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/1
+      REDIS_HOST: localhost
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          enable-cache: true
+      - name: Install python and sync dependencies
+        working-directory: backend
+        run: |
+          uv python install
+          uv sync --frozen
+      - name: Calculate Expiration Time (RFC 3339)
+        id: expiry
+        # Generates a timestamp exactly 1 hour from now in UTC format
+        run: echo "EXPIRES_AT=$(date -u -d '+1 hour' +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+      - name: Create Neon branch
+        uses: neondatabase/create-branch-action@v6
+        id: create-branch
+        with:
+          project_id: cold-sky-57169956
+          branch_name: test-${{ github.run_id }}-${{ github.run_attempt }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          expires_at: ${{ env.EXPIRES_AT }}
+      - name: Run test suite
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ steps.create-branch.outputs.db_url }}
+        run: |
+          uv run pytest
+      - name: Delete Neon branch
+        uses: neondatabase/delete-branch-action@v6
+        if: always()
+        with:
+          project_id: cold-sky-57169956
+          branch: ${{ steps.create-branch.outputs.branch_id }}
+          api_key: ${{ secrets.NEON_API_KEY }}

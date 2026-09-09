@@ -7,7 +7,6 @@ __pycache__/
 .venv/
 venv/
 env/
-.python-version
 
 # ==========================================
 # Django & Local Storage
