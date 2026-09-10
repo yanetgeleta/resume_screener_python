@@ -109,3 +109,64 @@ class ResumeChunk(models.Model):
 
     def __str__(self) -> str:
         return f"Resume {self.resume} Chunk {self.chunk_index}"
+
+
+class ChatSession(models.Model):
+    """
+    Groups RAG conversation around a specific Job and Tenant.
+    """
+
+    company = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="chat_sessions",
+    )
+    job = models.ForeignKey(
+        "jobs.Job",
+        on_delete=models.CASCADE,
+        related_name="chat_sessions",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["company", "job"]),
+        ]
+
+    def __str__(self):
+        return f"ChatSession {self.id} (Job: {self.job_id}, Company: {self.company_id})"
+
+
+class ChatMessage(models.Model):
+    """
+    Individual messages within a ChatSession.
+    """
+
+    class Role(models.TextChoices):
+        USER = "user", "User"
+        ASSISTANT = "assistant", "Assistant"
+        SYSTEM = "system", "System"
+
+    session = models.ForeignKey(
+        ChatSession,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    role = models.CharField(
+        max_length=20,
+        choices=Role.choices,
+        default=Role.USER,
+    )
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["session", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"[{self.role}] {self.content[:30]}..."
