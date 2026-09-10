@@ -59,3 +59,17 @@ jobs:
           project_id: cold-sky-57169956
           branch: ${{ steps.create-branch.outputs.branch_id }}
           api_key: ${{ secrets.NEON_API_KEY }}
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: "{{defaultContext}}:backend"
+          file: Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
