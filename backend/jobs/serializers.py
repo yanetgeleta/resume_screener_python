@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Application, Job, Resume
+from .models import Application, ChatMessage, ChatSession, Job, Resume
 
 
 class JobSerializer(serializers.ModelSerializer):
@@ -116,4 +116,61 @@ class ApplicationSerializer(serializers.ModelSerializer):
         representation["resume"] = ResumeSerializer(
             instance.resume, context=self.context
         ).data
+        return representation
+
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChatMessage
+        fields = [
+            "id",
+            "session",
+            "role",
+            "content",
+            "created_at",
+        ]
+        read_only_fields = ["id", "session", "created_at"]
+
+
+class ChatSessionSerializer(serializers.ModelSerializer):
+    job = serializers.PrimaryKeyRelatedField(queryset=Job.objects.all())
+    messages = ChatMessageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ChatSession
+        fields = [
+            "id",
+            "job",
+            "company",
+            "messages",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "company",
+            "messages",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        if not request or not request.user or not request.user.is_authenticated:
+            return attrs
+
+        user = request.user
+        job = attrs.get("job") or getattr(self.instance, "job", None)
+
+        if not user.is_staff and job and job.company != user:
+            raise serializers.ValidationError(
+                {"job": "You cannot create a chat session for a job owned by another company."}
+            )
+
+        return attrs
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        if instance.job:
+            representation["job_title"] = instance.job.title
         return representation

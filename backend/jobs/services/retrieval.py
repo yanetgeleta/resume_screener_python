@@ -133,3 +133,18 @@ fetch_session_candidate_chunks = fetch_candidate_chunks_for_session
 retrieve_candidate_chunks_for_session = fetch_candidate_chunks_for_session
 retrieve_chunks_for_session = fetch_candidate_chunks_for_session
 
+# Chat & pre-filter imports & re-exports
+from jobs.services.chat import (  # noqa: E402
+    CANNED_DECLINE,
+    CANNED_DECLINE_RESPONSE,
+    DEFAULT_SIMILARITY_THRESHOLD,
+    GROQ_CHAT_MODEL,
+    build_chat_prompt_messages,
+    check_similarity_filter,
+    generate_chat_response,
+    get_canned_decline_if_irrelevant,
+    should_decline_query,
+)
+
+
+
