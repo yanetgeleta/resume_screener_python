@@ -1,7 +1,7 @@
 import factory
 from accounts.models import Company
 from factory.faker import Faker
-from jobs.models import Application, Job, Resume, ResumeChunk
+from jobs.models import Application, ChatMessage, ChatSession, Job, Resume, ResumeChunk
 
 
 class CompanyFactory(factory.django.DjangoModelFactory):
@@ -116,3 +116,24 @@ class ResumeChunkFactory(factory.django.DjangoModelFactory):
     chunk_text = Faker("paragraph")
     embedding = [0.01] * 384  # 384-dimensional dummy normalized vector
     chunk_index = factory.Sequence(lambda n: n)
+
+
+# ---------------------------------------------------------------------------
+# Chat Session & Message Factories
+# ---------------------------------------------------------------------------
+class ChatSessionFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = ChatSession
+
+    company = factory.SubFactory(CompanyFactory)
+    job = factory.SubFactory(JobFactory, company=factory.SelfAttribute("..company"))
+
+
+class ChatMessageFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = ChatMessage
+
+    session = factory.SubFactory(ChatSessionFactory)
+    role = ChatMessage.Role.USER
+    content = "What experience do the candidates have?"
+
