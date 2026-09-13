@@ -15,7 +15,6 @@ from jobs.services.chat import (
     CAUTION_CLAUSE,
     GROQ_CHAT_MODEL,
     build_chat_prompt_messages,
-    get_canned_decline_if_irrelevant,
     get_confidence_band,
 )
 from jobs.services.retrieval import fetch_candidate_chunks_for_session
@@ -34,7 +33,6 @@ from .serializers import (
     JobSerializer,
     ResumeSerializer,
 )
-
 
 
 # Create your views here.
@@ -140,7 +138,9 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
         else:
             qs = ChatSession.objects.filter(company=user)
 
-        job_id = self.request.query_params.get("job") or self.request.query_params.get("job_id")
+        job_id = self.request.query_params.get("job") or self.request.query_params.get(
+            "job_id"
+        )
         if job_id:
             qs = qs.filter(job_id=job_id)
 
@@ -331,4 +331,3 @@ async def chat_stream_view(request, session_id: int):
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     return response
-
