@@ -199,7 +199,7 @@ def build_chat_prompt_messages(
     session: Any,
     query: str,
     chunks: Sequence[Any] | None = None,
-    history_limit: int = 10,
+    history_limit: int = 15,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     caution_clause: str | None = None,
     auto_detect_caution: bool = True,

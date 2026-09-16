@@ -226,8 +226,6 @@ async def chat_stream_view(request, session_id: int):
             query = body.get("query") or body.get("message")
         except (json.JSONDecodeError, UnicodeDecodeError):
             query = request.POST.get("query") or request.POST.get("message")
-    else:
-        query = request.GET.get("query") or request.GET.get("message")
 
     if not query or not query.strip():
         return JsonResponse(
@@ -314,6 +312,13 @@ async def chat_stream_view(request, session_id: int):
                     content=accumulated_text,
                 )
                 saved = True
+        except Exception as exc:
+            error_payload = {
+                "error": "Failed to generate complete response from model.",
+                "detail": str(exc),
+            }
+            yield f"data: {json.dumps(error_payload)}\n\n"
+            yield "data: [DONE]\n\n"
         finally:
             # Client disconnect / dropped stream:
             # Persist partial content so dialogue turns remain paired and context is not lost
