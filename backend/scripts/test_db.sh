@@ -19,7 +19,8 @@ neonctl branches create \
   --json > /tmp/neon_branch_output.json
 
 export DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" \
-  --project-id "$NEON_PROJECT_ID")
+  --project-id "$NEON_PROJECT_ID" \
+  --database-name neondb)
 
 echo "Waiting for branch endpoint to accept connections..."
 MAX_ATTEMPTS=60
