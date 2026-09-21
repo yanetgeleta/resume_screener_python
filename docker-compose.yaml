@@ -1,4 +1,18 @@
 services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - INTERNAL_API_URL=http://web:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - web
+    restart: unless-stopped
+
   web:
     build: ./backend
     command: gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000

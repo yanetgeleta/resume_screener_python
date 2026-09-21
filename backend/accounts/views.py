@@ -20,6 +20,7 @@ Company = get_user_model()
 class CompanyCreateView(generics.CreateAPIView):
     queryset = Company.objects.all()
     serializer_class = CompanyRegisterSerializer
+    permission_classes = [permissions.AllowAny]
 
 
 class LogoutView(APIView):
@@ -56,3 +57,4 @@ class LogoutView(APIView):
 
 class CompanyTokenRefreshView(TokenRefreshView):
     serializer_class = CompanyTokenRefreshSerializer
+    permission_classes = [permissions.AllowAny]
