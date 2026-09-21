@@ -15,6 +15,7 @@ from jobs.services.chat import (
     CAUTION_CLAUSE,
     GROQ_CHAT_MODEL,
     build_chat_prompt_messages,
+    format_ranked_candidates_context,
     get_confidence_band,
 )
 from jobs.services.retrieval import fetch_candidate_chunks_for_session
@@ -109,6 +110,30 @@ class ResumeViewSet(viewsets.ModelViewSet):
         for resume in created_resumes:
             process_resume.delay_on_commit(resume.id)
 
+        job_id = (
+            request.data.get("job")
+            or request.data.get("job_id")
+            or request.query_params.get("job_id")
+        )
+        if job_id:
+            try:
+                job = Job.objects.get(id=job_id)
+                if not request.user.is_staff and job.company_id != request.user.id:
+                    return Response(
+                        {"error": "Permission denied for this job."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+                for resume in created_resumes:
+                    Application.objects.get_or_create(job=job, resume=resume)
+                job.ranking_status = Job.RankingStatus.COMPUTING
+                job.save(update_fields=["ranking_status"])
+                recompute_job_rankings.delay_on_commit(job.id)
+            except Job.DoesNotExist:
+                return Response(
+                    {"error": "Job not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -188,10 +213,11 @@ async def _authenticate_user_for_stream(request):
 
 
 @csrf_exempt
-async def chat_stream_view(request, session_id: int):
+async def chat_stream_view(request, session_id: int, job_id: int | None = None):
     """
     Async streaming view returning StreamingHttpResponse (text/event-stream):
     - Authenticates user and verifies tenant ownership of session.
+    - Supports single candidate RAG as well as multi-candidate ranking summary synthesis.
     - Runs Step 3 retrieval & Step 4 similarity pre-filter.
     - Persists user ChatMessage.
     - Relays AsyncGroq token deltas as SSE data events.
@@ -220,6 +246,12 @@ async def chat_stream_view(request, session_id: int):
             status=status.HTTP_403_FORBIDDEN,
         )
 
+    if job_id is not None and session.job_id != int(job_id):
+        return JsonResponse(
+            {"error": "Session does not belong to the specified job."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     if request.method == "POST":
         try:
             body = json.loads(request.body.decode("utf-8")) if request.body else {}
@@ -235,14 +267,49 @@ async def chat_stream_view(request, session_id: int):
 
     query = query.strip()
 
+    # Check for multi-candidate profile/ranking summary query
+    is_multi_candidate = any(
+        kw in query.lower()
+        for kw in [
+            "top",
+            "rank",
+            "final_score",
+            "final score",
+            "candidate profile",
+            "candidate profiles",
+            "strengths, summary, and gaps",
+            "summary, and gaps",
+            "head_count",
+            "best candidates",
+            "shortlist",
+            "shortlisted",
+            "overview of candidates",
+            "rankings",
+        ]
+    )
+
+    extra_context = None
+    if is_multi_candidate:
+        head_count = getattr(session.job, "head_count", None) or 5
+        scored_apps = await sync_to_async(list)(
+            Application.objects.filter(
+                job_id=session.job_id,
+                final_score__isnull=False,
+            )
+            .select_related("resume")
+            .order_by("-final_score")[:head_count]
+        )
+        if scored_apps:
+            extra_context = format_ranked_candidates_context(scored_apps)
+
     # 1. Step 3: Candidate retrieval
     chunks = await sync_to_async(fetch_candidate_chunks_for_session)(session, query)
 
-    # 2. Step 4 & Step 7: Deterministic routing based on top result distance:
-    # - distance >= -0.20 (or no chunks): canned decline immediately, no Groq call
-    # - -0.35 <= distance < -0.20: borderline band, proceed to Groq with caution clause injected
-    # - distance < -0.35: confident match, proceed to Groq with normal prompt
-    band = get_confidence_band(chunks)
+    # 2. Step 4 & Step 7: Deterministic routing based on top result distance
+    if extra_context:
+        band = "confident"
+    else:
+        band = get_confidence_band(chunks)
 
     # 3. If out of scope: return canned decline stream without calling Groq
     if band == "decline":
@@ -275,6 +342,7 @@ async def chat_stream_view(request, session_id: int):
         query=query,
         chunks=chunks,
         caution_clause=caution,
+        extra_context=extra_context,
     )
 
     # 5. Persist incoming user query before streaming response

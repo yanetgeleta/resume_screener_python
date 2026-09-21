@@ -27,6 +27,15 @@ urlpatterns = [
         chat_stream_view,
         name="chat-stream",
     ),
+    path(
+        "jobs/<int:job_id>/chat/<int:session_id>/",
+        chat_stream_view,
+        name="job-chat-stream",
+    ),
+    path(
+        "jobs/<int:job_id>/chat/<int:session_id>",
+        chat_stream_view,
+        name="job-chat-stream-no-slash",
+    ),
     path("", include(router.urls)),
 ]
-

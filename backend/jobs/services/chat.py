@@ -195,6 +195,55 @@ def format_chunks_context(chunks: Sequence[Any]) -> str:
     return "\n\n".join(sections)
 
 
+def format_ranked_candidates_context(applications: Sequence[Any]) -> str:
+    """
+    Formats top ranked candidate applications into detailed profile context blocks
+    for multi-candidate ranking and summary queries.
+    """
+    if not applications:
+        return "No ranked candidate applications available."
+
+    sections = []
+    for rank, app in enumerate(applications, 1):
+        resume = getattr(app, "resume", None)
+        filename = getattr(
+            resume,
+            "original_filename",
+            f"Candidate #{getattr(app, 'resume_id', rank)}",
+        )
+        lines = [
+            f"--- Candidate Rank #{rank}: {filename} ---",
+            f"Final Match Score: {getattr(app, 'final_score', 'N/A')}",
+        ]
+        retrieval_score = getattr(app, "retrieval_score", None)
+        if retrieval_score is not None:
+            lines.append(f"Vector Similarity Score: {-retrieval_score:.3f}")
+
+        if resume:
+            if getattr(resume, "skills", None):
+                lines.append(f"Extracted Skills: {resume.skills}")
+            if getattr(resume, "experience_years", None) is not None:
+                lines.append(f"Experience: {resume.experience_years} years")
+
+        llm_profile = getattr(app, "llm_profile", None)
+        if llm_profile and isinstance(llm_profile, dict):
+            if llm_profile.get("summary"):
+                lines.append(f"Summary: {llm_profile['summary']}")
+            if llm_profile.get("strengths"):
+                strengths = llm_profile["strengths"]
+                s_str = ", ".join(strengths) if isinstance(strengths, list) else str(strengths)
+                lines.append(f"Strengths: {s_str}")
+            if llm_profile.get("gaps"):
+                gaps = llm_profile["gaps"]
+                g_str = ", ".join(gaps) if isinstance(gaps, list) else str(gaps)
+                lines.append(f"Gaps: {g_str}")
+        elif resume and getattr(resume, "full_text", None):
+            lines.append(f"Resume Snippet: {resume.full_text[:400]}")
+
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections)
+
+
 def build_chat_prompt_messages(
     session: Any,
     query: str,
@@ -203,13 +252,15 @@ def build_chat_prompt_messages(
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     caution_clause: str | None = None,
     auto_detect_caution: bool = True,
+    extra_context: str | None = None,
 ) -> list[dict[str, str]]:
     """
     Concatenates:
     (1) System prompt with graceful-decline instruction baked in as text (and caution clause if borderline).
-    (2) The retrieved chunks from Step 3.
-    (3) The last N=10 messages from ChatMessage for this session (reversed for chronological order).
-    (4) The new user query.
+    (2) The ranked candidate profiles (if extra_context provided).
+    (3) The retrieved chunks from Step 3.
+    (4) The last N=10 messages from ChatMessage for this session (reversed for chronological order).
+    (5) The new user query.
     """
     if caution_clause is None and auto_detect_caution and chunks:
         if is_borderline_query(chunks):
@@ -219,6 +270,8 @@ def build_chat_prompt_messages(
     system_sections = [system_prompt]
     if caution_clause:
         system_sections.append(f"CAUTION:\n{caution_clause}")
+    if extra_context:
+        system_sections.append(f"=== TOP RANKED CANDIDATE PROFILES ===\n{extra_context}")
     system_sections.append(f"=== CANDIDATE RESUME CONTEXT ===\n{context_text}")
     full_system_message = "\n\n".join(system_sections)
 

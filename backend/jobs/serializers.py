@@ -14,11 +14,12 @@ class JobSerializer(serializers.ModelSerializer):
             "skills",
             "head_count",
             "embedding",
+            "ranking_status",
             "company",
             "created_at",
             "is_active",
         ]
-        read_only_fields = ["company", "id", "created_at", "skills"]
+        read_only_fields = ["company", "id", "created_at", "skills", "ranking_status"]
 
 
 class ResumeSerializer(serializers.ModelSerializer):

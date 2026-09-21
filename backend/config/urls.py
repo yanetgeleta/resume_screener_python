@@ -17,9 +17,16 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import include, path
+from jobs.views import chat_stream_view
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("accounts.urls")),
     path("api/", include("jobs.urls")),
+    path(
+        "jobs/<int:job_id>/chat/<int:session_id>/",
+        chat_stream_view,
+        name="root-job-chat-stream",
+    ),
+    path("jobs/<int:job_id>/chat/<int:session_id>", chat_stream_view),
 ]
