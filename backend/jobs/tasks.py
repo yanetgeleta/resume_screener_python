@@ -136,7 +136,7 @@ def extract_resume_profile(resume_id):
         "stated or directly inferable from dates in the text. Do not invent "
         "skills that are not named. If total years of professional experience "
         "cannot be determined from the text, return null for experience_years "
-        "rather than guessing a number."
+        "rather than guessing a number. Return the result strictly as a valid JSON object."
     )
     try:
         resume = Resume.objects.get(id=resume_id)
@@ -159,10 +159,15 @@ def extract_resume_profile(resume_id):
         resume.skills = extracted_profile.skills
         resume.experience_years = extracted_profile.experience_years
         resume.save(update_fields=["skills", "experience_years"])
-    except PydanticValidationError as val_err:
-        # Schema validation error: Fail fast (retrying with identical prompt won't fix bad JSON)
-        logger.error("Pydantic validation failed for resume %s: %s", resume_id, val_err)
-        # Do not raise val_err so Celery doesn't waste retries on unparseable data
+    except Exception as err:
+        # Ultimate fallback: Log and assign empty skills so the Celery chord doesn't abort
+        logger.error(
+            "Terminal extraction failure for resume %s: %s. Defaulting to empty skills.",
+            resume_id,
+            err,
+        )
+        resume.skills = []
+        resume.save(update_fields=["skills"])
         return
 
 
@@ -185,7 +190,7 @@ def extract_job_profile(job_id):
         "explicitly stated as required or preferred in the text. Do not invent skills "
         "that are not named. Extract the minimum required years of professional experience "
         "as an integer. If the minimum required years of experience cannot be determined "
-        "from the text, return null for experience_years rather than guessing a number."
+        "from the text, return null for experience_years rather than guessing a number.Return the result strictly as a valid JSON object."
     )
     try:
         job = Job.objects.get(id=job_id)
@@ -311,7 +316,7 @@ def _build_profile_user_prompt(
     retry_backoff_max=600,
     retry_kwargs={"max_retries": 5},
     retry_jitter=True,
-    rate_limit="30/m",
+    rate_limit="4/m",
 )
 def generate_application_profile_task(application_id):
     """builds a profile for the exact head_count, using all the information so far from applications process"""
