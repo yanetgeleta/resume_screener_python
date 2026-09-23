@@ -15,6 +15,7 @@ services:
 
   web:
     build: ./backend
+    image: resume_screener_backend:latest
     command: gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
     env_file:
       - ./backend/.env
@@ -23,6 +24,8 @@ services:
       - DJANGO_SETTINGS_MODULE=config.settings.development
       - REDIS_URL=redis://redis:6379/1
       - REDIS_HOST=redis
+    volumes:
+      - resumes_data:/app/resumes
     depends_on:
       redis:
         condition: service_healthy
@@ -31,7 +34,8 @@ services:
 
   worker:
     build: ./backend
-    command: celery -A config worker --loglevel=info
+    image: resume_screener_backend:latest # Uses identical prebuilt image
+    command: celery -A config worker --concurrency=3 --loglevel=info
     env_file:
       - ./backend/.env
     environment:
@@ -39,6 +43,8 @@ services:
       - DJANGO_SETTINGS_MODULE=config.settings.development
       - REDIS_URL=redis://redis:6379/1
       - REDIS_HOST=redis
+    volumes:
+      - resumes_data:/app/resumes # Worker reads the exact same disk
     depends_on:
       redis:
         condition: service_healthy
@@ -51,3 +57,6 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+
+volumes:
+  resumes_data: # Declares shared named volume

@@ -22,7 +22,7 @@ def extract_skills_experience(
     client = groq_client.groq_client_instance
 
     llm_response = client.chat.completions.create(
-        model="openai/gpt-oss-120b",
+        model="openai/gpt-oss-20b",
         messages=[
             {"role": "system", "content": system_content},
             {"role": "user", "content": user_content},
