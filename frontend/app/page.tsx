@@ -39,9 +39,9 @@ export default function HomePage() {
     isLoading: isJobsLoading,
     error: jobsError,
   } = useQuery({
-    queryKey: ["all-jobs", isAuthenticated],
+    queryKey: ["all-jobs", email],
     queryFn: fetchJobs,
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!email,
   });
 
   return (

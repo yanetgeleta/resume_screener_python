@@ -3,17 +3,29 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
 }
 
+function normalizeContent(raw: string): string {
+  if (!raw) return "";
+  // Unescape any XML/HTML entities like &lt;br&gt; and normalize [br] tags
+  return raw
+    .replace(/&lt;br\s*\/?&gt;/gi, "<br />")
+    .replace(/\[br\]/gi, "<br />");
+}
+
 export default function MarkdownRenderer({ content, className = "" }: MarkdownRendererProps) {
+  const processedContent = normalizeContent(content);
+
   return (
     <div className={`prose-dark max-w-none text-sm leading-relaxed ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw]}
         components={{
           table: ({ node, ...props }) => (
             <div className="overflow-x-auto my-3 rounded-xl border border-zinc-700/80 bg-zinc-900/90 shadow-xl shadow-black/20">
@@ -33,7 +45,10 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
             <th className="px-4 py-3 font-semibold text-zinc-100 border-b border-zinc-700/80 select-none whitespace-nowrap" {...props} />
           ),
           td: ({ node, ...props }) => (
-            <td className="px-4 py-2.5 text-xs text-zinc-300 align-top leading-relaxed border-b border-zinc-800/40" {...props} />
+            <td className="px-4 py-2.5 text-xs text-zinc-300 align-top leading-relaxed border-b border-zinc-800/40 whitespace-pre-line" {...props} />
+          ),
+          br: ({ node, ...props }) => (
+            <br className="my-1" {...props} />
           ),
           h1: ({ node, ...props }) => (
             <h1 className="text-base font-bold text-zinc-100 mt-4 mb-2 tracking-tight flex items-center gap-1.5" {...props} />
@@ -85,7 +100,7 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
           ),
         }}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );

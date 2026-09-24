@@ -276,12 +276,17 @@ async def chat_stream_view(request, session_id: int, job_id: int | None = None):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    if request.method == "POST":
-        try:
-            body = json.loads(request.body.decode("utf-8")) if request.body else {}
-            query = body.get("query") or body.get("message")
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            query = request.POST.get("query") or request.POST.get("message")
+    if request.method != "POST":
+        return JsonResponse(
+            {"error": "Method not allowed. Use POST."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    try:
+        body = json.loads(request.body.decode("utf-8")) if request.body else {}
+        query = body.get("query") or body.get("message")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        query = request.POST.get("query") or request.POST.get("message")
 
     if not query or not query.strip():
         return JsonResponse(

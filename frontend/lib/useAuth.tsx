@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   getAuthToken,
   getRefreshToken,
@@ -27,6 +28,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [token, setToken] = useState("");
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -51,8 +53,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const syncState = () => {
-      setToken(getAuthToken());
-      setEmail(getStoredUserEmail());
+      const storedToken = getAuthToken();
+      const storedEmail = getStoredUserEmail();
+      if (!storedToken) {
+        queryClient.clear();
+      }
+      setToken(storedToken);
+      setEmail(storedEmail);
     };
 
     window.addEventListener("auth_token_changed", syncState);
@@ -82,21 +89,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener("auth_token_changed", syncState);
     };
-  }, []);
+  }, [queryClient]);
 
   const login = async (userEmail: string, pass: string) => {
+    queryClient.clear();
     const res = await loginApi(userEmail, pass);
     setToken(res.access);
     setEmail(userEmail);
   };
 
   const register = async (userEmail: string, companyName: string, pass: string) => {
+    queryClient.clear();
     await registerApi(userEmail, companyName, pass);
     await login(userEmail, pass);
   };
 
   const logout = async () => {
     await logoutApi();
+    queryClient.clear();
     setToken("");
     setEmail("");
   };
