@@ -18,6 +18,7 @@ import { fetchJob, fetchMessages, ChatMessage } from "@/lib/api";
 import { useChatStream } from "@/lib/useChatStream";
 import LockedChatState from "@/components/LockedChatState";
 import ResumeUploadModal from "@/components/ResumeUploadModal";
+import MarkdownRenderer from "@/components/MarkdownRenderer";
 
 export default function ChatSessionConversationPage({
   params,
@@ -189,13 +190,17 @@ export default function ChatSessionConversationPage({
                     </div>
                   )}
                   <div
-                    className={`rounded-2xl px-4 py-3 max-w-[85%] whitespace-pre-wrap leading-relaxed shadow-sm ${
+                    className={`rounded-2xl px-4 py-3 max-w-[85%] leading-relaxed shadow-sm ${
                       isUser
-                        ? "bg-blue-600 text-white rounded-br-xs"
+                        ? "bg-blue-600 text-white rounded-br-xs whitespace-pre-wrap"
                         : "bg-zinc-900/90 border border-zinc-800/80 text-zinc-200 rounded-bl-xs"
                     }`}
                   >
-                    {msg.content}
+                    {isUser ? (
+                      msg.content
+                    ) : (
+                      <MarkdownRenderer content={msg.content} />
+                    )}
                   </div>
                   {isUser && (
                     <div className="w-7 h-7 rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700 flex items-center justify-center shrink-0 mt-0.5">
@@ -206,20 +211,25 @@ export default function ChatSessionConversationPage({
               );
             })}
 
-            {/* Live Streaming Bubble (Rendered above live stream from useReducer) */}
-            {partialText && (
-              <div className="flex gap-3 text-sm justify-start animate-fade-in">
-                <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                  <Bot className="w-3.5 h-3.5" />
-                </div>
-                <div className="rounded-2xl px-4 py-3 max-w-[85%] whitespace-pre-wrap leading-relaxed bg-zinc-900/90 border border-blue-500/40 text-zinc-100 shadow-md shadow-blue-500/5 rounded-bl-xs relative">
-                  {partialText}
-                  {isStreaming && (
+            {/* Live Streaming Bubble - strictly rendered only while streaming and not already in messages */}
+            {isStreaming && partialText && (() => {
+              const lastMsg = messages[messages.length - 1];
+              const isAlreadyInMessages =
+                lastMsg?.role === "assistant" && lastMsg?.content === partialText;
+              if (isAlreadyInMessages) return null;
+
+              return (
+                <div className="flex gap-3 text-sm justify-start animate-fade-in">
+                  <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                    <Bot className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="rounded-2xl px-4 py-3 max-w-[85%] leading-relaxed bg-zinc-900/90 border border-blue-500/40 text-zinc-100 shadow-md shadow-blue-500/5 rounded-bl-xs relative">
+                    <MarkdownRenderer content={partialText} />
                     <span className="inline-block w-2 h-4 ml-1 bg-blue-400 animate-pulse align-middle" />
-                  )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Error Detail Display */}
             {errorDetail && (

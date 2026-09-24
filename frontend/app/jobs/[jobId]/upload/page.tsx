@@ -16,7 +16,7 @@ import {
   SkipForward,
   Briefcase,
 } from "lucide-react";
-import { uploadResumes, fetchJob, createSession, recomputeJobRankings } from "@/lib/api";
+import { uploadResumes, fetchJob, createSession, fetchSessions, recomputeJobRankings } from "@/lib/api";
 
 type Step = "select" | "uploading" | "processing" | "completed";
 
@@ -35,7 +35,8 @@ export default function ResumeUploadPage({
   const [rankingStatus, setRankingStatus] = useState<string>("not_started");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasTransitionedRef = useRef(false);
 
   const { data: job } = useQuery({
     queryKey: ["job", jobId],
@@ -44,8 +45,8 @@ export default function ResumeUploadPage({
 
   useEffect(() => {
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
       }
     };
   }, []);
@@ -85,35 +86,47 @@ export default function ResumeUploadPage({
 
   const startPollingRanking = () => {
     setStep("processing");
-    pollIntervalRef.current = setInterval(async () => {
+    hasTransitionedRef.current = false;
+
+    const poll = async () => {
       try {
         const updatedJob = await fetchJob(jobId);
         setRankingStatus(updatedJob.ranking_status);
 
         if (updatedJob.ranking_status === "done") {
-          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          if (hasTransitionedRef.current) return;
+          hasTransitionedRef.current = true;
           setStep("completed");
 
-          // Transition to done first time:
-          // 1. Create a new chat session for that job
-          // 2. Navigate to that chat session with autoSynthesize flag
+          // Transition to chat: reuse existing session if one already exists, or create ONE
           setTimeout(async () => {
             try {
-              const newSession = await createSession(jobId);
-              router.push(`/jobs/${jobId}/chat/${newSession.id}?autoSynthesize=true`);
+              const existingSessions = await fetchSessions(jobId);
+              let targetSession = existingSessions && existingSessions.length > 0 ? existingSessions[0] : null;
+              if (!targetSession) {
+                targetSession = await createSession(jobId);
+              }
+              router.push(`/jobs/${jobId}/chat/${targetSession.id}?autoSynthesize=true`);
             } catch (createErr) {
-              console.error("Failed to auto-create session on ranking done:", createErr);
+              console.error("Failed to route to session on ranking done:", createErr);
               router.push(`/jobs/${jobId}/chat`);
             }
-          }, 1500);
+          }, 1200);
+          return;
         } else if (updatedJob.ranking_status === "failed") {
-          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
           setErrorMsg("Candidate ranking recomputation failed on the backend.");
+          return;
         }
+
+        // Schedule next poll tick
+        pollTimeoutRef.current = setTimeout(poll, 2000);
       } catch (err: unknown) {
         console.error("Error polling ranking status:", err);
+        pollTimeoutRef.current = setTimeout(poll, 3000);
       }
-    }, 2000);
+    };
+
+    pollTimeoutRef.current = setTimeout(poll, 2000);
   };
 
   const handleUploadAndProcess = async () => {

@@ -1,7 +1,9 @@
 import json
+from datetime import timedelta
 
 from asgiref.sync import sync_to_async
 from django.http import JsonResponse, StreamingHttpResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -173,6 +175,28 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        # Prevent rapid duplicate session creation for the same job and user
+        job_id = request.data.get("job") or request.data.get("job_id")
+        if job_id and request.user.is_authenticated:
+            recent_threshold = timezone.now() - timedelta(seconds=15)
+            # Find if an empty session (no messages) was created very recently for this company and job
+            recent_empty_session = (
+                ChatSession.objects.filter(
+                    company=request.user,
+                    job_id=job_id,
+                    created_at__gte=recent_threshold,
+                    messages__isnull=True,
+                )
+                .order_by("-created_at")
+                .first()
+            )
+            if recent_empty_session:
+                serializer = self.get_serializer(recent_empty_session)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        return super().create(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"])
     def messages(self, request, pk=None):

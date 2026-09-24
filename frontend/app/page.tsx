@@ -16,12 +16,23 @@ import {
   Layers,
   ChevronRight,
   Lock,
+  RefreshCw,
+  Check,
 } from "lucide-react";
 import { fetchJobs } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 
 export default function HomePage() {
-  const { isAuthenticated, email, logout, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, email, logout, refreshAuth, isRefreshing, isLoading: isAuthLoading } = useAuth();
+  const [refreshSuccess, setRefreshSuccess] = React.useState(false);
+
+  const handleManualRefresh = async () => {
+    const ok = await refreshAuth();
+    if (ok) {
+      setRefreshSuccess(true);
+      setTimeout(() => setRefreshSuccess(false), 2000);
+    }
+  };
 
   const {
     data: jobs = [],
@@ -59,6 +70,24 @@ export default function HomePage() {
                   {email}
                 </span>
               )}
+              <button
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 text-zinc-300 hover:text-zinc-100 text-xs font-medium transition-all cursor-pointer disabled:opacity-50"
+                title="Refresh Authentication Token"
+              >
+                {refreshSuccess ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="hidden sm:inline text-emerald-400">Refreshed</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className={`w-3.5 h-3.5 text-blue-400 ${isRefreshing ? "animate-spin" : ""}`} />
+                    <span className="hidden sm:inline">{isRefreshing ? "Refreshing..." : "Refresh Token"}</span>
+                  </>
+                )}
+              </button>
               <Link
                 href="/jobs/new"
                 className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-medium transition-all shadow-md shadow-blue-600/20"

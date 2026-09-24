@@ -13,6 +13,8 @@ import {
   Sparkles,
   Bot,
   Compass,
+  RefreshCw,
+  Check,
 } from "lucide-react";
 import { fetchSessions, createSession, fetchJob, ChatSession } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
@@ -29,7 +31,17 @@ export default function ChatLayout({
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
-  const { email, isAuthenticated, logout } = useAuth();
+  const { email, isAuthenticated, logout, refreshAuth, isRefreshing } = useAuth();
+  const [refreshSuccess, setRefreshSuccess] = React.useState(false);
+  const isCreatingRef = React.useRef(false);
+
+  const handleManualRefresh = async () => {
+    const ok = await refreshAuth();
+    if (ok) {
+      setRefreshSuccess(true);
+      setTimeout(() => setRefreshSuccess(false), 2000);
+    }
+  };
 
   // Fetch job details (to display job title and check ranking_status)
   const { data: job } = useQuery({
@@ -48,14 +60,22 @@ export default function ChatLayout({
   const createSessionMutation = useMutation({
     mutationFn: () => createSession(jobId),
     onSuccess: (newSession: ChatSession) => {
+      isCreatingRef.current = false;
       queryClient.invalidateQueries({ queryKey: ["sessions", jobId] });
       // Auto-navigate into newly created session per spec
       router.push(`/jobs/${jobId}/chat/${newSession.id}`);
     },
     onError: (err) => {
+      isCreatingRef.current = false;
       console.error("Failed to create chat session:", err);
     },
   });
+
+  const handleCreateSession = () => {
+    if (isCreatingRef.current || createSessionMutation.isPending) return;
+    isCreatingRef.current = true;
+    createSessionMutation.mutate();
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-zinc-950 text-zinc-100">
@@ -92,8 +112,8 @@ export default function ChatLayout({
 
           {/* New Chat Button - Creates session & auto-navigates */}
           <button
-            onClick={() => createSessionMutation.mutate()}
-            disabled={createSessionMutation.isPending}
+            onClick={handleCreateSession}
+            disabled={createSessionMutation.isPending || isCreatingRef.current}
             className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:from-blue-700 active:to-indigo-700 text-white text-xs font-medium transition-all shadow-md shadow-blue-600/20 disabled:opacity-50 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -194,26 +214,45 @@ export default function ChatLayout({
             Resume Upload Pipeline
           </Link>
 
-          {/* User Profile / Logout */}
+          {/* User Profile / Logout / Token Refresh */}
           <div className="pt-2 border-t border-zinc-800/40 flex items-center justify-between text-xs">
-            <span className="text-[11px] text-zinc-400 truncate max-w-[150px]" title={email}>
+            <span className="text-[11px] text-zinc-400 truncate max-w-[120px]" title={email}>
               {email || "Company Account"}
             </span>
-            {isAuthenticated ? (
-              <button
-                onClick={() => logout()}
-                className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
-              >
-                Sign Out
-              </button>
-            ) : (
-              <Link
-                href="/login"
-                className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
-              >
-                Sign In
-              </Link>
-            )}
+            <div className="flex items-center gap-2">
+              {isAuthenticated && (
+                <button
+                  onClick={handleManualRefresh}
+                  disabled={isRefreshing}
+                  className="text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  title="Refresh Authentication Token"
+                >
+                  {refreshSuccess ? (
+                    <span className="text-emerald-400 text-[10px]">Refreshed</span>
+                  ) : (
+                    <>
+                      <RefreshCw className={`w-3 h-3 text-blue-400 ${isRefreshing ? "animate-spin" : ""}`} />
+                      <span className="text-[10px] hidden sm:inline">Refresh</span>
+                    </>
+                  )}
+                </button>
+              )}
+              {isAuthenticated ? (
+                <button
+                  onClick={() => logout()}
+                  className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                >
+                  Sign Out
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  Sign In
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       </aside>

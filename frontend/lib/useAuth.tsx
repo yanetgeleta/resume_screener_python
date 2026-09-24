@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import {
   getAuthToken,
+  getRefreshToken,
+  refreshTokenApi,
   getStoredUserEmail,
   clearAuthTokens,
   loginApi,
@@ -15,9 +17,11 @@ interface AuthContextType {
   email: string;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isRefreshing: boolean;
   login: (email: string, pass: string) => Promise<void>;
   register: (email: string, companyName: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshAuth: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -26,11 +30,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState("");
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refreshAuth = async (): Promise<boolean> => {
+    const refresh = getRefreshToken();
+    if (!refresh) return false;
+    setIsRefreshing(true);
+    try {
+      const newToken = await refreshTokenApi();
+      setToken(newToken);
+      setEmail(getStoredUserEmail());
+      return true;
+    } catch (err) {
+      console.warn("Auto/manual token refresh failed:", err);
+      return false;
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    setToken(getAuthToken());
-    setEmail(getStoredUserEmail());
-    setIsLoading(false);
+    const syncState = () => {
+      setToken(getAuthToken());
+      setEmail(getStoredUserEmail());
+    };
+
+    window.addEventListener("auth_token_changed", syncState);
+
+    // Initial load: if refresh token exists, proactively refresh on opening localhost
+    const initAuth = async () => {
+      const currentToken = getAuthToken();
+      const currentRefresh = getRefreshToken();
+      const currentEmail = getStoredUserEmail();
+
+      setToken(currentToken);
+      setEmail(currentEmail);
+
+      if (currentRefresh) {
+        try {
+          const freshToken = await refreshTokenApi();
+          setToken(freshToken);
+        } catch {
+          // Keep current token if valid or clear handled by refreshTokenApi
+        }
+      }
+      setIsLoading(false);
+    };
+
+    initAuth();
+
+    return () => {
+      window.removeEventListener("auth_token_changed", syncState);
+    };
   }, []);
 
   const login = async (userEmail: string, pass: string) => {
@@ -57,9 +108,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email,
         isAuthenticated: !!token,
         isLoading,
+        isRefreshing,
         login,
         register,
         logout,
+        refreshAuth,
       }}
     >
       {children}

@@ -116,6 +116,28 @@ def test_create_session_success(api_client):
     assert session.job == job
 
 
+def test_create_session_deduplicates_rapid_requests(api_client):
+    """
+    Verify that multiple rapid session creation requests for the same job
+    reuse the empty session rather than creating duplicate sessions.
+    """
+    company = CompanyFactory()
+    job = JobFactory(company=company, title="Fullstack Engineer")
+
+    api_client.force_authenticate(user=company)
+    response_1 = api_client.post("/api/sessions/", {"job": job.id})
+    assert response_1.status_code == 201
+    session_id_1 = response_1.data["id"]
+
+    # Second immediate request for the same job should return the same session
+    response_2 = api_client.post("/api/sessions/", {"job": job.id})
+    assert response_2.status_code == 201
+    session_id_2 = response_2.data["id"]
+
+    assert session_id_1 == session_id_2
+    assert ChatSession.objects.filter(job=job).count() == 1
+
+
 def test_create_session_cross_tenant_forbidden(api_client):
     """
     Verify that Company A cannot create a chat session for Company B's job.

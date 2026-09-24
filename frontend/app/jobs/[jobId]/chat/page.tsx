@@ -13,7 +13,7 @@ import {
   Users,
   ShieldAlert,
 } from "lucide-react";
-import { fetchJob, createSession, ChatSession } from "@/lib/api";
+import { fetchJob, createSession, fetchSessions, ChatSession } from "@/lib/api";
 import LockedChatState from "@/components/LockedChatState";
 
 export default function ChatWelcomePage({
@@ -25,24 +25,48 @@ export default function ChatWelcomePage({
   const jobId = unwrappedParams.jobId;
   const router = useRouter();
   const queryClient = useQueryClient();
+  const isCreatingRef = React.useRef(false);
 
-  const { data: job, isLoading, refetch } = useQuery({
+  const { data: job, isLoading: isJobLoading, refetch } = useQuery({
     queryKey: ["job", jobId],
     queryFn: () => fetchJob(jobId),
   });
 
+  const { data: sessions = [], isLoading: isSessionsLoading } = useQuery({
+    queryKey: ["sessions", jobId],
+    queryFn: () => fetchSessions(jobId),
+  });
+
+  // If sessions already exist for this job, auto-route to the most recent one
+  React.useEffect(() => {
+    if (!isSessionsLoading && sessions.length > 0) {
+      router.replace(`/jobs/${jobId}/chat/${sessions[0].id}`);
+    }
+  }, [sessions, isSessionsLoading, jobId, router]);
+
   const createSessionMutation = useMutation({
     mutationFn: () => createSession(jobId),
     onSuccess: (newSession: ChatSession) => {
+      isCreatingRef.current = false;
       queryClient.invalidateQueries({ queryKey: ["sessions", jobId] });
       router.push(`/jobs/${jobId}/chat/${newSession.id}`);
     },
+    onError: (err) => {
+      isCreatingRef.current = false;
+      console.error("Failed to create session:", err);
+    },
   });
 
-  if (isLoading) {
+  const handleCreateSession = () => {
+    if (isCreatingRef.current || createSessionMutation.isPending) return;
+    isCreatingRef.current = true;
+    createSessionMutation.mutate();
+  };
+
+  if (isJobLoading || isSessionsLoading || sessions.length > 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
-        Loading job information...
+        Loading chat session...
       </div>
     );
   }
@@ -85,8 +109,9 @@ export default function ChatWelcomePage({
       {/* Suggested Quick Starters */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
         <button
-          onClick={() => createSessionMutation.mutate()}
-          className="p-4 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800/80 hover:border-zinc-700 transition-all group flex flex-col gap-1 cursor-pointer"
+          onClick={handleCreateSession}
+          disabled={createSessionMutation.isPending || isCreatingRef.current}
+          className="p-4 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800/80 hover:border-zinc-700 transition-all group flex flex-col gap-1 cursor-pointer disabled:opacity-50"
         >
           <div className="flex items-center gap-2 text-xs font-semibold text-blue-400">
             <Users className="w-4 h-4" />
@@ -98,8 +123,9 @@ export default function ChatWelcomePage({
         </button>
 
         <button
-          onClick={() => createSessionMutation.mutate()}
-          className="p-4 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800/80 hover:border-zinc-700 transition-all group flex flex-col gap-1 cursor-pointer"
+          onClick={handleCreateSession}
+          disabled={createSessionMutation.isPending || isCreatingRef.current}
+          className="p-4 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800/80 hover:border-zinc-700 transition-all group flex flex-col gap-1 cursor-pointer disabled:opacity-50"
         >
           <div className="flex items-center gap-2 text-xs font-semibold text-purple-400">
             <Sparkles className="w-4 h-4" />
@@ -113,12 +139,12 @@ export default function ChatWelcomePage({
 
       {/* Start Chat Button */}
       <button
-        onClick={() => createSessionMutation.mutate()}
-        disabled={createSessionMutation.isPending}
+        onClick={handleCreateSession}
+        disabled={createSessionMutation.isPending || isCreatingRef.current}
         className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-sm transition-all shadow-lg shadow-blue-600/20 cursor-pointer disabled:opacity-50"
       >
         <Plus className="w-4 h-4" />
-        <span>{createSessionMutation.isPending ? "Starting Chat..." : "Start a New Conversation"}</span>
+        <span>{createSessionMutation.isPending || isCreatingRef.current ? "Starting Chat..." : "Start a New Conversation"}</span>
         <ArrowRight className="w-4 h-4 ml-1" />
       </button>
     </div>

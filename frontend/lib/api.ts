@@ -14,11 +14,12 @@ export function getRefreshToken(): string {
   return "";
 }
 
-export function setAuthTokens(access: string, refresh: string, email?: string): void {
+export function setAuthTokens(access: string, refresh?: string, email?: string): void {
   if (typeof window !== "undefined") {
     localStorage.setItem("access_token", access);
-    localStorage.setItem("refresh_token", refresh);
+    if (refresh) localStorage.setItem("refresh_token", refresh);
     if (email) localStorage.setItem("user_email", email);
+    window.dispatchEvent(new Event("auth_token_changed"));
   }
 }
 
@@ -27,6 +28,7 @@ export function clearAuthTokens(): void {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("user_email");
+    window.dispatchEvent(new Event("auth_token_changed"));
   }
 }
 
@@ -35,6 +37,48 @@ export function getStoredUserEmail(): string {
     return localStorage.getItem("user_email") || "";
   }
   return "";
+}
+
+let refreshPromise: Promise<string> | null = null;
+
+export async function refreshTokenApi(): Promise<string> {
+  const refresh = getRefreshToken();
+  if (!refresh) {
+    clearAuthTokens();
+    throw new Error("No refresh token available");
+  }
+
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/refresh/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh }),
+      });
+
+      if (!res.ok) {
+        clearAuthTokens();
+        throw new Error(`Token refresh failed with status ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (!data.access) {
+        clearAuthTokens();
+        throw new Error("Invalid token refresh response from server");
+      }
+
+      setAuthTokens(data.access, data.refresh || refresh);
+      return data.access as string;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 export async function loginApi(email: string, password: string): Promise<{ access: string; refresh: string }> {
@@ -133,7 +177,7 @@ export interface ChatMessage {
 }
 
 export async function fetchWithAuth(url: string, options: RequestInit = {}) {
-  const token = getAuthToken();
+  let token = getAuthToken();
   const headers = new Headers(options.headers || {});
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -142,10 +186,24 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     ...options,
     headers,
   });
+
+  // If 401 Unauthorized and refresh token exists, attempt refresh & retry once
+  if (response.status === 401 && getRefreshToken()) {
+    try {
+      const newToken = await refreshTokenApi();
+      headers.set("Authorization", `Bearer ${newToken}`);
+      response = await fetch(url, {
+        ...options,
+        headers,
+      });
+    } catch {
+      // If refresh fails, fall through to error handling
+    }
+  }
 
   if (!response.ok) {
     let errorDetail = `Request failed: ${response.status} ${response.statusText}`;

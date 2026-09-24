@@ -3,6 +3,7 @@
 import { useReducer, useRef, useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { streamChat } from "./streamChat";
+import { ChatMessage } from "./api";
 
 export interface StreamState {
   status: "idle" | "streaming" | "error";
@@ -80,6 +81,7 @@ export function useChatStream({
   const abortControllerRef = useRef<AbortController | null>(null);
   const queryClient = useQueryClient();
   const currentSessionIdRef = useRef(sessionId);
+  const accumulatedTextRef = useRef<string>("");
 
   // Update current session ref
   useEffect(() => {
@@ -103,6 +105,7 @@ export function useChatStream({
       abortControllerRef.current = null;
     }
     // Stop rendering the old partial reply when navigating
+    accumulatedTextRef.current = "";
     dispatch({ type: "RESET" });
   }, [sessionId]);
 
@@ -118,17 +121,36 @@ export function useChatStream({
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
+      accumulatedTextRef.current = "";
 
       dispatch({ type: "RESET" });
 
-      const activeToken = customToken || token || (typeof window !== "undefined" ? localStorage.getItem("access_token") || "" : "");
+      // Optimistically append the user message into the cache immediately
+      // This ensures the user message NEVER disappears from screen while waiting for the model
+      const tempUserMsgId = -Date.now();
+      queryClient.setQueryData<ChatMessage[]>(["messages", String(sessionId)], (old = []) => [
+        ...old,
+        {
+          id: tempUserMsgId,
+          session: Number(sessionId),
+          role: "user",
+          content: queryText.trim(),
+          created_at: new Date().toISOString(),
+        },
+      ]);
+
+      const activeToken =
+        customToken ||
+        token ||
+        (typeof window !== "undefined" ? localStorage.getItem("access_token") || "" : "");
 
       try {
         await streamChat(
           sessionId,
-          queryText,
+          queryText.trim(),
           activeToken,
           (chunk) => {
+            accumulatedTextRef.current += chunk;
             dispatch({ type: "CHUNK", payload: chunk });
           },
           (errorPayload) => {
@@ -139,22 +161,39 @@ export function useChatStream({
             dispatch({ type: "ERROR", payload: msg });
           },
           async () => {
-            dispatch({ type: "DONE" });
+            const completedContent = accumulatedTextRef.current;
             abortControllerRef.current = null;
 
-            // Invalidate message-history query, and only clear partialText once
-            // that refetch resolves and the persisted message is available
+            // 1. Immediately reset partialText to eliminate any double AI bubble flicker
+            dispatch({ type: "RESET" });
+
+            // 2. Synchronously append the completed assistant message into the query cache
+            if (completedContent.trim()) {
+              queryClient.setQueryData<ChatMessage[]>(["messages", String(sessionId)], (old = []) => {
+                if (old.some((m) => m.role === "assistant" && m.content === completedContent)) {
+                  return old;
+                }
+                return [
+                  ...old,
+                  {
+                    id: -(Date.now() + 1),
+                    session: Number(sessionId),
+                    role: "assistant",
+                    content: completedContent,
+                    created_at: new Date().toISOString(),
+                  },
+                ];
+              });
+            }
+
+            // 3. Silently invalidate in background to sync database IDs without UI jump
             try {
               await queryClient.invalidateQueries({
                 queryKey: ["messages", String(sessionId)],
               });
-              await queryClient.refetchQueries({
-                queryKey: ["messages", String(sessionId)],
-              });
             } catch (err) {
-              console.error("Failed to refetch messages after stream:", err);
+              console.error("Failed to sync messages after stream:", err);
             } finally {
-              dispatch({ type: "CLEAR_PARTIAL" });
               onStreamComplete?.();
             }
           },

@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:${PATH:-/usr/bin:/bin}"
+
+# Fallback to NEON_API_KEY from .env if not already exported
+if [ -z "${NEON_API_KEY:-}" ] && [ -f .env ]; then
+  NEON_KEY=$(grep '^NEON_API_KEY=' .env | cut -d '=' -f2- | tr -d '"\r\n')
+  if [ -n "$NEON_KEY" ]; then
+    export NEON_API_KEY="$NEON_KEY"
+  fi
+fi
+
 # Fallback to the project ID if not already exported in the shell environment
 export NEON_PROJECT_ID="${NEON_PROJECT_ID:-cold-sky-57169956}"
 
