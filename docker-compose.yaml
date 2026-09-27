@@ -20,7 +20,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - HF_HUB_OFFLINE=0
+      - HF_HUB_OFFLINE=1
       - DJANGO_SETTINGS_MODULE=config.settings.development
       - REDIS_URL=redis://redis:6379/1
       - REDIS_HOST=redis

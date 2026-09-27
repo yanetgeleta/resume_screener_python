@@ -125,7 +125,7 @@ class JobViewSet(viewsets.ModelViewSet):
         for j in jobs_qs:
             t_score = 1.0 if j.id in text_match_ids else 0.0
             job_scores[j.id] = (t_score, 0.0, j)
-
+        # This goes through the annotated jobs and adds the semantic similarity to them. If not it will assign them 0 and reassigns
         for aj in annotated_jobs:
             t_score, _, j = job_scores.get(aj.id, (0.0, 0.0, aj))
             sem_sim = -aj.semantic_dist  # convert inner product dist back to similarity
@@ -321,9 +321,12 @@ class JobViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        has_processed = job.applications.filter(
-            pipeline_status=Application.PipelineStatus.PROCESSED
-        ).exists()
+        has_processed = (
+            job.applications.filter(
+                pipeline_status=Application.PipelineStatus.PROCESSED
+            ).count()
+            >= job.head_count
+        )
         if not has_processed:
             return Response(
                 {
@@ -616,7 +619,9 @@ async def chat_stream_view(request, session_id: int, job_id: int | None = None):
             .order_by("-final_score")[:head_count]
         )
         if scored_apps:
-            extra_context = format_ranked_candidates_context(scored_apps)
+            extra_context = await sync_to_async(format_ranked_candidates_context)(
+                scored_apps
+            )
 
     # 1. Step 3: Candidate retrieval
     chunks = await sync_to_async(fetch_candidate_chunks_for_session)(session, query)

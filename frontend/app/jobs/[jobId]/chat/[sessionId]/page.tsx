@@ -1,31 +1,33 @@
 "use client";
 
-import React, { use, useState, useRef, useEffect } from "react";
+import MarkdownRenderer from "@/components/MarkdownRenderer";
+import ResumeUploadModal from "@/components/ResumeUploadModal";
+import { ChatMessage, fetchJob, fetchMessages } from "@/lib/api";
+import { useChatStream } from "@/lib/useChatStream";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Send,
-  Square,
-  Bot,
-  User,
-  UploadCloud,
   AlertCircle,
+  Bot,
+  Send,
   Sparkles,
-  Loader2,
-  RefreshCw,
+  Square,
+  UploadCloud,
+  User,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { fetchJob, fetchMessages, ChatMessage } from "@/lib/api";
-import { useChatStream } from "@/lib/useChatStream";
-import LockedChatState from "@/components/LockedChatState";
-import ResumeUploadModal from "@/components/ResumeUploadModal";
-import MarkdownRenderer from "@/components/MarkdownRenderer";
+import React, { use, useEffect, useRef, useState } from "react";
 
 export default function ChatSessionConversationPage({
   params,
 }: {
-  params: Promise<{ jobId: string; sessionId: string }> | { jobId: string; sessionId: string };
+  params:
+    | Promise<{ jobId: string; sessionId: string }>
+    | { jobId: string; sessionId: string };
 }) {
-  const unwrappedParams = use(params as any) as { jobId: string; sessionId: string };
+  const unwrappedParams = use(params as any) as {
+    jobId: string;
+    sessionId: string;
+  };
   const { jobId, sessionId } = unwrappedParams;
   const searchParams = useSearchParams();
 
@@ -36,10 +38,7 @@ export default function ChatSessionConversationPage({
   const autoSynthesizedRef = useRef(false);
 
   // Fetch Job details to monitor title and ranking_status
-  const {
-    data: job,
-    refetch: refetchJob,
-  } = useQuery({
+  const { data: job, refetch: refetchJob } = useQuery({
     queryKey: ["job", jobId],
     queryFn: () => fetchJob(jobId),
   });
@@ -83,7 +82,13 @@ export default function ChatSessionConversationPage({
       const synthesizedQuery = `Please provide a profile of the top ${headCount} candidates ranked by final_score, including each candidate's strengths, summary, gaps, and contact/personal information (such as phone number, email, GitHub, LinkedIn, social media, or any other contact details found on their resume or application).`;
       sendQuery(synthesizedQuery);
     }
-  }, [searchParams, isLoadingMessages, messages.length, job?.head_count, sendQuery]);
+  }, [
+    searchParams,
+    isLoadingMessages,
+    messages.length,
+    job?.head_count,
+    sendQuery,
+  ]);
 
   // Auto-scroll to bottom as messages or streamed text updates
   useEffect(() => {
@@ -168,8 +173,8 @@ export default function ChatSessionConversationPage({
               Ready to evaluate candidates
             </h3>
             <p className="text-xs text-zinc-400 leading-relaxed">
-              Ask about candidates&apos; matching skills, experience gaps, or ask for the top
-              candidates ranked by score.
+              Ask about candidates&apos; matching skills, experience gaps, or
+              ask for the top candidates ranked by score.
             </p>
           </div>
         ) : (
@@ -212,24 +217,27 @@ export default function ChatSessionConversationPage({
             })}
 
             {/* Live Streaming Bubble - strictly rendered only while streaming and not already in messages */}
-            {isStreaming && partialText && (() => {
-              const lastMsg = messages[messages.length - 1];
-              const isAlreadyInMessages =
-                lastMsg?.role === "assistant" && lastMsg?.content === partialText;
-              if (isAlreadyInMessages) return null;
+            {isStreaming &&
+              partialText &&
+              (() => {
+                const lastMsg = messages[messages.length - 1];
+                const isAlreadyInMessages =
+                  lastMsg?.role === "assistant" &&
+                  lastMsg?.content === partialText;
+                if (isAlreadyInMessages) return null;
 
-              return (
-                <div className="flex gap-3 text-sm justify-start animate-fade-in">
-                  <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                    <Bot className="w-3.5 h-3.5" />
+                return (
+                  <div className="flex gap-3 text-sm justify-start animate-fade-in">
+                    <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                      <Bot className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="rounded-2xl px-4 py-3 max-w-[85%] leading-relaxed bg-zinc-900/90 border border-blue-500/40 text-zinc-100 shadow-md shadow-blue-500/5 rounded-bl-xs relative">
+                      <MarkdownRenderer content={partialText} />
+                      <span className="inline-block w-2 h-4 ml-1 bg-blue-400 animate-pulse align-middle" />
+                    </div>
                   </div>
-                  <div className="rounded-2xl px-4 py-3 max-w-[85%] leading-relaxed bg-zinc-900/90 border border-blue-500/40 text-zinc-100 shadow-md shadow-blue-500/5 rounded-bl-xs relative">
-                    <MarkdownRenderer content={partialText} />
-                    <span className="inline-block w-2 h-4 ml-1 bg-blue-400 animate-pulse align-middle" />
-                  </div>
-                </div>
-              );
-            })()}
+                );
+              })()}
 
             {/* Error Detail Display */}
             {errorDetail && (
@@ -275,7 +283,10 @@ export default function ChatSessionConversationPage({
             </div>
           ) : (
             /* Normal Composer Form */
-            <form onSubmit={handleSubmit} className="relative flex items-center gap-2">
+            <form
+              onSubmit={handleSubmit}
+              className="relative flex items-center gap-2"
+            >
               <textarea
                 ref={textareaRef}
                 value={inputQuery}

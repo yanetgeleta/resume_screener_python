@@ -158,8 +158,11 @@ def extract_resume_profile(resume_id):
     try:
         extracted_profile = extract_skills_experience(SYSTEM_PROMPT, resume.full_text)
         resume.skills = extracted_profile.skills
-        resume.experience_years = extracted_profile.experience_years
-        resume.save(update_fields=["skills", "experience_years"])
+        if not resume.experience_years:
+            resume.experience_years = extracted_profile.experience_years
+            resume.save(update_fields=["skills", "experience_years"])
+        else:
+            resume.save(update_fields=["skills"])
     except Exception as err:
         # Ultimate fallback: Log and assign empty skills so the Celery chord doesn't abort
         logger.error(
@@ -256,9 +259,10 @@ def finalize_scoring(*args, job_id=None):
 
     with transaction.atomic():
         for application in applications:
-            if application.final_score is not None:
-                application.pipeline_status = Application.PipelineStatus.PROCESSED
-            elif application.pipeline_status == Application.PipelineStatus.PENDING:
+            if (
+                application.final_score is not None
+                or application.pipeline_status == Application.PipelineStatus.PENDING
+            ):
                 application.pipeline_status = Application.PipelineStatus.PROCESSED
         Application.objects.bulk_update(applications, ["pipeline_status"])
 
@@ -439,7 +443,9 @@ def process_single_application(application_id: int):
 
         # Step 4: Finalize Scoring
         normalized_retrieval_score = (
-            -application.retrieval_score if application.retrieval_score is not None else 0.0
+            -application.retrieval_score
+            if application.retrieval_score is not None
+            else 0.0
         )
         score_application(application, normalized_retrieval_score)
         application.refresh_from_db()
@@ -453,8 +459,9 @@ def process_single_application(application_id: int):
         application.save(update_fields=["pipeline_status"])
 
     except Exception as exc:
-        logger.exception("Failed processing single application %s: %s", application_id, exc)
+        logger.exception(
+            "Failed processing single application %s: %s", application_id, exc
+        )
         application.pipeline_status = Application.PipelineStatus.FAILED
         application.save(update_fields=["pipeline_status"])
         raise exc
-
