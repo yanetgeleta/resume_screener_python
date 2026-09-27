@@ -137,3 +137,37 @@ class ChatMessageFactory(factory.django.DjangoModelFactory):
     role = ChatMessage.Role.USER
     content = "What experience do the candidates have?"
 
+
+# ---------------------------------------------------------------------------
+# Applicant & Dynamic Field Factories
+# ---------------------------------------------------------------------------
+class ApplicantFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = "applicants.Applicant"
+
+    email = Faker("email")
+    full_name = Faker("name")
+    phone_number = "+15551234567"
+    is_active = True
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        password = kwargs.pop("password", "applicantPass123")
+        applicant = model_class(*args, **kwargs)
+        applicant.set_password(password)
+        applicant.save()
+        return applicant
+
+
+class JobApplicationFieldFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = "jobs.JobApplicationField"
+
+    job = factory.SubFactory(JobFactory)
+    label = "Years of Experience"
+    field_type = "number"
+    choices = []
+    required = True
+    order = 0
+
+

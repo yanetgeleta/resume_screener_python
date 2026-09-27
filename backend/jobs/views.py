@@ -1,10 +1,13 @@
 import json
 from datetime import timedelta
 
+from applicants.models import Applicant
 from asgiref.sync import sync_to_async
+from django.db import models
 from django.http import JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from pgvector.django import MaxInnerProduct
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -20,15 +23,25 @@ from jobs.services.chat import (
     format_ranked_candidates_context,
     get_confidence_band,
 )
+from jobs.services.embedding import embed_text
 from jobs.services.retrieval import fetch_candidate_chunks_for_session
 from jobs.tasks import (
     embed_job,
     extract_job_profile,
     process_resume,
+    process_single_application,
     recompute_job_rankings,
 )
 
-from .models import Application, ChatMessage, ChatSession, Job, Resume
+from .models import (
+    Application,
+    ApplicationAnswer,
+    ChatMessage,
+    ChatSession,
+    Job,
+    JobApplicationField,
+    Resume,
+)
 from .serializers import (
     ApplicationSerializer,
     ChatMessageSerializer,
@@ -41,13 +54,21 @@ from .serializers import (
 # Create your views here.
 class JobViewSet(viewsets.ModelViewSet):
     serializer_class = JobSerializer
-    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ["search", "apply", "retrieve"]:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
         user = self.request.user
+        if not user or not user.is_authenticated:
+            return Job.objects.filter(is_active=True).select_related("company")
+        if isinstance(user, Applicant):
+            return Job.objects.filter(is_active=True).select_related("company")
         if user.is_staff:
-            return Job.objects.all()
-        return Job.objects.filter(company=user)
+            return Job.objects.all().select_related("company")
+        return Job.objects.filter(company=user).select_related("company")
 
     def perform_create(self, serializer):
         created_job = serializer.save(company=self.request.user)
@@ -66,6 +87,265 @@ class JobViewSet(viewsets.ModelViewSet):
                 "ranking_status": job.ranking_status,
             },
             status=status.HTTP_202_ACCEPTED,
+        )
+
+    @action(detail=False, methods=["get"], permission_classes=[permissions.AllowAny])
+    def search(self, request):
+        """
+        Public and authenticated job search endpoint:
+        - Full-text match on title, description, skills.
+        - Semantic vector similarity using MiniLM embedding vs Job.embedding.
+        - Normalized blended score for ranking.
+        """
+        query = (
+            request.query_params.get("q") or request.query_params.get("query") or ""
+        ).strip()
+        jobs_qs = Job.objects.filter(is_active=True).select_related("company")
+
+        if not query:
+            jobs_qs = jobs_qs.order_by("-created_at")
+            serializer = self.get_serializer(jobs_qs, many=True)
+            return Response(serializer.data)
+
+        # 1. Text match filter (title, description, skills)
+        text_matches = jobs_qs.filter(
+            models.Q(title__icontains=query)
+            | models.Q(description__icontains=query)
+            | models.Q(skills__icontains=query)
+        )
+        text_match_ids = set(text_matches.values_list("id", flat=True))
+
+        # 2. Semantic vector similarity
+        query_vec = embed_text(query)
+        annotated_jobs = jobs_qs.exclude(embedding__isnull=True).annotate(
+            semantic_dist=MaxInnerProduct("embedding", query_vec)
+        )
+
+        job_scores = {}
+        for j in jobs_qs:
+            t_score = 1.0 if j.id in text_match_ids else 0.0
+            job_scores[j.id] = (t_score, 0.0, j)
+
+        for aj in annotated_jobs:
+            t_score, _, j = job_scores.get(aj.id, (0.0, 0.0, aj))
+            sem_sim = -aj.semantic_dist  # convert inner product dist back to similarity
+            job_scores[aj.id] = (t_score, sem_sim, aj)
+
+        # Blend: 0.5 text + 0.5 normalized semantic
+        ranked_jobs = []
+        for j_id, (t_score, sem_sim, job_obj) in job_scores.items():
+            norm_sem = max(0.0, min(1.0, (sem_sim + 1.0) / 2.0))
+            blended_score = (0.5 * t_score) + (0.5 * norm_sem)
+            if blended_score > 0.05 or j_id in text_match_ids:
+                ranked_jobs.append((blended_score, job_obj))
+
+        ranked_jobs.sort(key=lambda x: x[0], reverse=True)
+        results = [j for _, j in ranked_jobs]
+        serializer = self.get_serializer(results, many=True)
+        return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[permissions.AllowAny],
+        parser_classes=[FormParser, MultiPartParser, JSONParser],
+    )
+    def apply(self, request, pk=None):
+        """
+        Job apply endpoint for authenticated applicants and guests:
+        - Authenticated applicant: can choose existing resume or upload a new one.
+        - Guest: captures full_name, email, phone_number directly on application and requires PDF upload.
+        - Dynamic custom fields (JobApplicationField) submitted as answers.
+        - Dispatches unified single-application pipeline in the background and returns immediate confirmation.
+        """
+        job = self.get_object()
+        if not job.is_active:
+            return Response(
+                {"error": "This job posting is inactive."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = (
+            request.user if (request.user and request.user.is_authenticated) else None
+        )
+        is_applicant = isinstance(user, Applicant)
+
+        resume_id = request.data.get("resume_id") or request.data.get("resume")
+        file_obj = request.FILES.get("file") or request.FILES.get("resume")
+
+        guest_name = request.data.get("full_name") or request.data.get("name")
+        guest_email = request.data.get("email")
+        guest_phone = request.data.get("phone_number") or request.data.get("phone")
+
+        if not is_applicant:
+            if not guest_name or not str(guest_name).strip():
+                return Response(
+                    {"error": "Full name is required for guest application."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not guest_email or not str(guest_email).strip():
+                return Response(
+                    {"error": "Email is required for guest application."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not guest_phone or not str(guest_phone).strip():
+                return Response(
+                    {"error": "Phone number is required for guest application."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not file_obj:
+                return Response(
+                    {"error": "Resume PDF file is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        resume = None
+        if resume_id:
+            try:
+                if is_applicant:
+                    resume = Resume.objects.get(id=resume_id, applicant=user)
+                else:
+                    resume = Resume.objects.get(id=resume_id)
+            except Resume.DoesNotExist:
+                return Response(
+                    {"error": "Specified resume was not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        elif file_obj:
+            if not file_obj.name.lower().endswith(".pdf"):
+                return Response(
+                    {"error": "Only PDF files are allowed."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            resume = Resume.objects.create(
+                original_filename=file_obj.name,
+                file=file_obj,
+                applicant=user if is_applicant else None,
+                company=job.company,
+            )
+        else:
+            return Response(
+                {"error": "Either resume_id or a resume PDF file is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Parse and validate dynamic field answers
+        req_fields = job.application_fields.filter(required=True)
+        raw_answers = request.data.get("answers")
+        answers_dict = {}
+        if isinstance(raw_answers, str):
+            try:
+                raw_answers = json.loads(raw_answers)
+            except Exception:
+                raw_answers = []
+        if isinstance(raw_answers, list):
+            for ans in raw_answers:
+                if isinstance(ans, dict) and "field_id" in ans:
+                    answers_dict[int(ans["field_id"])] = str(ans.get("value", ""))
+                elif isinstance(ans, dict) and "field" in ans:
+                    answers_dict[int(ans["field"])] = str(ans.get("value", ""))
+        for key, val in request.data.items():
+            if key.startswith("field_"):
+                try:
+                    f_id = int(key.replace("field_", ""))
+                    answers_dict[f_id] = str(val)
+                except ValueError:
+                    pass
+
+        for rf in req_fields:
+            if rf.id not in answers_dict or not answers_dict[rf.id].strip():
+                return Response(
+                    {"error": f"Application question '{rf.label}' is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        application, created = Application.objects.get_or_create(
+            job=job,
+            resume=resume,
+            defaults={
+                "applicant": user if is_applicant else None,
+                "source": Application.Source.APPLICANT_SUBMITTED,
+                "pipeline_status": Application.PipelineStatus.PENDING,
+                "guest_full_name": str(guest_name).strip()
+                if not is_applicant and guest_name
+                else None,
+                "guest_email": str(guest_email).strip()
+                if not is_applicant and guest_email
+                else None,
+                "guest_phone_number": str(guest_phone).strip()
+                if not is_applicant and guest_phone
+                else None,
+            },
+        )
+        if not created:
+            application.source = Application.Source.APPLICANT_SUBMITTED
+            application.pipeline_status = Application.PipelineStatus.PENDING
+            application.save(update_fields=["source", "pipeline_status"])
+
+        for field_id, value in answers_dict.items():
+            try:
+                field_obj = job.application_fields.get(id=field_id)
+                ApplicationAnswer.objects.update_or_create(
+                    application=application,
+                    field=field_obj,
+                    defaults={"value": value},
+                )
+            except JobApplicationField.DoesNotExist:
+                pass
+
+        # Dispatch background pipeline for this single application!
+        process_single_application.delay_on_commit(application.id)
+
+        return Response(
+            {
+                "status": "submitted",
+                "application_id": application.id,
+                "pipeline_status": application.pipeline_status,
+                "message": "Application submitted successfully.",
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"], url_path="see-result")
+    def see_result(self, request, pk=None):
+        """
+        Lightweight 'See result' endpoint:
+        - Accessible once the job has >= 1 Application with pipeline_status=processed.
+        - Creates or retrieves the job's ChatSession.
+        - Returns session_id for immediate navigation without wait-states.
+        """
+        job = self.get_object()
+        if not request.user.is_staff and job.company_id != request.user.id:
+            return Response(
+                {"error": "Permission denied for this job."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        has_processed = job.applications.filter(
+            pipeline_status=Application.PipelineStatus.PROCESSED
+        ).exists()
+        if not has_processed:
+            return Response(
+                {
+                    "error": "No processed applications available yet for this job.",
+                    "detail": "At least one candidate application must have completed processing.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        session, created = ChatSession.objects.get_or_create(
+            company=request.user,
+            job=job,
+        )
+        return Response(
+            {
+                "session_id": session.id,
+                "created": created,
+                "has_messages": session.messages.exists(),
+                "job_id": job.id,
+                "job_title": job.title,
+            },
+            status=status.HTTP_200_OK,
         )
 
 
@@ -126,7 +406,14 @@ class ResumeViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_403_FORBIDDEN,
                     )
                 for resume in created_resumes:
-                    Application.objects.get_or_create(job=job, resume=resume)
+                    Application.objects.get_or_create(
+                        job=job,
+                        resume=resume,
+                        defaults={
+                            "source": Application.Source.COMPANY_UPLOAD,
+                            "pipeline_status": Application.PipelineStatus.PENDING,
+                        },
+                    )
                 job.ranking_status = Job.RankingStatus.COMPUTING
                 job.save(update_fields=["ranking_status"])
                 recompute_job_rankings.delay_on_commit(job.id)

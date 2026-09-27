@@ -166,7 +166,11 @@ GROQ_CHAT_MODEL: str = "openai/gpt-oss-120b"
 
 DEFAULT_SYSTEM_PROMPT: str = (
     "You are an AI assistant helping recruiters evaluate and screen candidates for a job opening. "
-    "Use only the provided candidate resume chunks to answer the user's questions about candidate qualifications, skills, and experience.\n\n"
+    "Use only the provided candidate resume chunks, candidate profiles, and application data to answer the user's questions about candidate qualifications, skills, and experience.\n\n"
+    "CANDIDATE CONTACT DETAILS INSTRUCTION:\n"
+    "When providing candidate profiles, summaries, or rankings, you MUST include a dedicated 'Contact & Personal Information' section for each candidate. "
+    "Extract and report any contact details found in the candidate context, applicant details, or resume header snippet — including full name, phone number, email address, LinkedIn, GitHub, portfolio website, or social media links. "
+    "If a particular contact channel is not found, indicate 'Not Provided'.\n\n"
     "GRACEFUL DECLINE INSTRUCTION:\n"
     "If the provided resume context does not contain enough information to answer the question, "
     "or if the question is out of scope for the available candidates, politely and gracefully decline to answer. "
@@ -198,7 +202,7 @@ def format_chunks_context(chunks: Sequence[Any]) -> str:
 def format_ranked_candidates_context(applications: Sequence[Any]) -> str:
     """
     Formats top ranked candidate applications into detailed profile context blocks
-    for multi-candidate ranking and summary queries.
+    for multi-candidate ranking and summary queries, including contact and personal information.
     """
     if not applications:
         return "No ranked candidate applications available."
@@ -219,6 +223,31 @@ def format_ranked_candidates_context(applications: Sequence[Any]) -> str:
         if retrieval_score is not None:
             lines.append(f"Vector Similarity Score: {-retrieval_score:.3f}")
 
+        # Contact & Personal Information
+        applicant = getattr(app, "applicant", None)
+        if applicant:
+            lines.append(
+                f"Contact Details: Full Name: {applicant.full_name}, Email: {applicant.email}, Phone: {applicant.phone_number}"
+            )
+        elif getattr(app, "guest_full_name", None) or getattr(app, "guest_email", None):
+            lines.append(
+                f"Contact Details (Guest): Full Name: {getattr(app, 'guest_full_name', 'N/A')}, "
+                f"Email: {getattr(app, 'guest_email', 'N/A')}, Phone: {getattr(app, 'guest_phone_number', 'N/A')}"
+            )
+
+        # Include custom application answers if present
+        if hasattr(app, "answers"):
+            try:
+                answers = list(app.answers.select_related("field").all())
+                if answers:
+                    ans_str = "; ".join(
+                        f"{a.field.label}: {a.value}" for a in answers if a.value
+                    )
+                    if ans_str:
+                        lines.append(f"Application Custom Questions: {ans_str}")
+            except Exception:
+                pass
+
         if resume:
             if getattr(resume, "skills", None):
                 lines.append(f"Extracted Skills: {resume.skills}")
@@ -237,8 +266,12 @@ def format_ranked_candidates_context(applications: Sequence[Any]) -> str:
                 gaps = llm_profile["gaps"]
                 g_str = ", ".join(gaps) if isinstance(gaps, list) else str(gaps)
                 lines.append(f"Gaps: {g_str}")
-        elif resume and getattr(resume, "full_text", None):
-            lines.append(f"Resume Snippet: {resume.full_text[:400]}")
+
+        # Always include the resume header text to surface links (GitHub, LinkedIn, social media, phone, etc.)
+        if resume and getattr(resume, "full_text", None):
+            raw_snippet = resume.full_text[:800].strip()
+            if raw_snippet:
+                lines.append(f"Resume Header & Raw Contact Snippet:\n{raw_snippet}")
 
         sections.append("\n".join(lines))
     return "\n\n".join(sections)

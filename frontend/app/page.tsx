@@ -63,6 +63,13 @@ export default function HomePage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <Link
+            href="/jobs"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 text-zinc-300 hover:text-zinc-100 text-xs font-medium transition-all"
+          >
+            <Briefcase className="w-3.5 h-3.5 text-blue-400" />
+            <span>Job Marketplace</span>
+          </Link>
           {isAuthenticated ? (
             <>
               {email && (
@@ -228,58 +235,97 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {jobs.map((job: any) => (
-                <div
-                  key={job.id}
-                  className="p-5 rounded-2xl bg-zinc-900/60 hover:bg-zinc-900/90 border border-zinc-800/80 hover:border-zinc-700/80 transition-all space-y-4 shadow-sm flex flex-col justify-between"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <h4 className="text-sm font-semibold text-zinc-100 truncate">
-                        {job.title}
-                      </h4>
-                      <span
-                        className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full shrink-0 ${
-                          job.ranking_status === "done"
-                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                            : job.ranking_status === "computing"
-                            ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                            : "bg-zinc-800 text-zinc-400 border border-zinc-700"
-                        }`}
-                      >
-                        {job.ranking_status ? job.ranking_status.replace("_", " ") : "not started"}
-                      </span>
+              {jobs.map((job: any) => {
+                const hasProcessed =
+                  (job.processed_application_count && job.processed_application_count >= 1) ||
+                  job.ranking_status === "done";
+
+                return (
+                  <div
+                    key={job.id}
+                    className="p-5 rounded-2xl bg-zinc-900/60 hover:bg-zinc-900/90 border border-zinc-800/80 hover:border-zinc-700/80 transition-all space-y-4 shadow-sm flex flex-col justify-between"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="text-sm font-semibold text-zinc-100 truncate">
+                          {job.title}
+                        </h4>
+                        <span
+                          className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full shrink-0 ${
+                            job.ranking_status === "done"
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                              : job.ranking_status === "computing"
+                              ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                              : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                          }`}
+                        >
+                          {job.ranking_status ? job.ranking_status.replace("_", " ") : "not started"}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
+                        {job.description}
+                      </p>
+
+                      <div className="flex items-center gap-3 text-[11px] text-zinc-500 pt-1">
+                        <span>
+                          Candidates:{" "}
+                          <strong className="text-zinc-300 font-semibold">
+                            {job.processed_application_count ?? 0} processed
+                          </strong>{" "}
+                          ({job.application_count ?? 0} total)
+                        </span>
+                        <span>•</span>
+                        <span>Target: {job.head_count || 5}</span>
+                      </div>
                     </div>
 
-                    <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
-                      {job.description}
-                    </p>
-                  </div>
-
-                  <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between text-xs">
-                    <span className="text-[11px] text-zinc-500">
-                      Target: {job.head_count || "N/A"} candidate(s)
-                    </span>
-
-                    <div className="flex items-center gap-2">
+                    <div className="pt-3 border-t border-zinc-800/60 flex items-center justify-between text-xs">
                       <Link
                         href={`/jobs/${job.id}/upload`}
                         className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors"
                       >
-                        Upload
+                        Upload Resumes
                       </Link>
-                      <Link
-                        href={`/jobs/${job.id}/chat`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-all"
-                      >
-                        <MessageSquare className="w-3 h-3" />
-                        <span>Chat</span>
-                        <ChevronRight className="w-3 h-3" />
-                      </Link>
+
+                      <div className="flex items-center gap-2">
+                        {hasProcessed ? (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const { seeResultApi } = await import("@/lib/api");
+                                const res = await seeResultApi(job.id);
+                                window.location.href = `/jobs/${job.id}/chat/${res.session_id}?autoSynthesize=true`;
+                              } catch (e: any) {
+                                alert(e.message || "Failed to open result");
+                              }
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-white" />
+                            <span>See Result</span>
+                          </button>
+                        ) : (
+                          <span
+                            className="px-2.5 py-1.5 rounded-lg bg-zinc-800/50 text-zinc-500 text-[11px] cursor-not-allowed border border-zinc-800"
+                            title="See result will be active once at least one candidate application is processed"
+                          >
+                            Result Pending
+                          </span>
+                        )}
+
+                        <Link
+                          href={`/jobs/${job.id}/chat`}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors"
+                        >
+                          <MessageSquare className="w-3 h-3 text-zinc-400" />
+                          <span>Chat</span>
+                        </Link>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

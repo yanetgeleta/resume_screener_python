@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     # Local apps
     "accounts",
     "jobs",
+    "applicants",
 ]
 
 MIDDLEWARE = [
@@ -95,7 +96,7 @@ MEDIA_URL = "/resumes/"
 # Django REST Framework & JWT
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "applicants.auth.MultiUserJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
 }

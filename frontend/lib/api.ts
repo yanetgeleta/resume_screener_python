@@ -145,6 +145,15 @@ export async function logoutApi(): Promise<void> {
   clearAuthTokens();
 }
 
+export interface JobApplicationField {
+  id?: number;
+  label: string;
+  field_type: "text" | "textarea" | "number" | "boolean" | "single_choice";
+  choices?: string[];
+  required: boolean;
+  order?: number;
+}
+
 export interface Job {
   id: number;
   title: string;
@@ -154,8 +163,95 @@ export interface Job {
   head_count: number | null;
   ranking_status: "not_started" | "computing" | "retrieval_done" | "done" | "failed";
   company?: number;
+  company_name?: string;
   created_at: string;
   is_active: boolean;
+  application_fields?: JobApplicationField[];
+  application_count?: number;
+  processed_application_count?: number;
+}
+
+export interface Applicant {
+  id: number;
+  email: string;
+  full_name: string;
+  phone_number: string;
+  created_at?: string;
+}
+
+export interface ApplicantResume {
+  id: number;
+  original_filename: string;
+  file: string;
+  skills?: string[] | null;
+  experience_years?: number | null;
+  created_at: string;
+}
+
+export interface ApplicantApplication {
+  id: number;
+  job: {
+    id: number;
+    title: string;
+    company_name?: string;
+    created_at: string;
+    is_active: boolean;
+  };
+  resume: number;
+  resume_filename?: string;
+  source: string;
+  pipeline_status: "pending" | "processing" | "processed" | "failed";
+  status: string;
+  created_at: string;
+}
+
+// ---------------------------------------------------------
+// Applicant Token Storage & Authentication
+// ---------------------------------------------------------
+export function getApplicantToken(): string {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("applicant_access_token") || "";
+  }
+  return "";
+}
+
+export function getApplicantRefreshToken(): string {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("applicant_refresh_token") || "";
+  }
+  return "";
+}
+
+export function setApplicantTokens(access: string, refresh?: string, applicant?: Applicant): void {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("applicant_access_token", access);
+    if (refresh) localStorage.setItem("applicant_refresh_token", refresh);
+    if (applicant) localStorage.setItem("applicant_user", JSON.stringify(applicant));
+    window.dispatchEvent(new Event("applicant_auth_changed"));
+  }
+}
+
+export function clearApplicantTokens(): void {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("applicant_access_token");
+    localStorage.removeItem("applicant_refresh_token");
+    localStorage.removeItem("applicant_user");
+    window.dispatchEvent(new Event("applicant_auth_changed"));
+  }
+}
+
+export function getStoredApplicant(): Applicant | null {
+  if (typeof window !== "undefined") {
+    const raw = localStorage.getItem("applicant_user");
+    if (raw) {
+      try {
+        return JSON.parse(raw) as Applicant;
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
 }
 
 export interface ChatSession {
@@ -236,11 +332,173 @@ export async function createJob(data: {
   description: string;
   required_experience_years?: number | null;
   head_count?: number | null;
+  application_fields?: JobApplicationField[];
 }): Promise<Job> {
   return fetchWithAuth(`${API_BASE_URL}/api/jobs/`, {
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+export async function seeResultApi(jobId: string | number): Promise<{
+  session_id: number;
+  created: boolean;
+  has_messages: boolean;
+  job_id: number;
+  job_title: string;
+}> {
+  return fetchWithAuth(`${API_BASE_URL}/api/jobs/${jobId}/see-result/`, {
+    method: "POST",
+  });
+}
+
+export async function searchJobsApi(query: string = ""): Promise<Job[]> {
+  const url = `${API_BASE_URL}/api/jobs/search/?q=${encodeURIComponent(query)}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    let msg = `Search failed (${res.status})`;
+    try {
+      const err = await res.json();
+      msg = err.detail || err.error || JSON.stringify(err);
+    } catch {}
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.results)) return data.results;
+  return [];
+}
+
+export async function applyJobApi(
+  jobId: string | number,
+  formData: FormData
+): Promise<{ status: string; application_id: number; pipeline_status: string; message: string }> {
+  const applicantToken = getApplicantToken();
+  const headers: Record<string, string> = {};
+  if (applicantToken) {
+    headers["Authorization"] = `Bearer ${applicantToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/apply/`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let errorDetail = `Application submission failed (${response.status})`;
+    try {
+      const err = await response.json();
+      errorDetail = err.error || err.detail || (Array.isArray(err.password) ? err.password.join(" ") : null) || JSON.stringify(err);
+    } catch {}
+    throw new Error(errorDetail);
+  }
+
+  return response.json();
+}
+
+// ---------------------------------------------------------
+// Applicant Auth & Portal APIs
+// ---------------------------------------------------------
+export async function applicantSignupApi(payload: {
+  email: string;
+  password: string;
+  full_name: string;
+  phone_number: string;
+}): Promise<{ applicant: Applicant; tokens: { access: string; refresh: string } }> {
+  const res = await fetch(`${API_BASE_URL}/api/applicants/signup/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    let msg = `Sign up failed (${res.status})`;
+    try {
+      const err = await res.json();
+      msg = err.detail || err.error || (Array.isArray(err.password) ? err.password.join(" ") : null) || JSON.stringify(err);
+    } catch {}
+    throw new Error(msg);
+  }
+
+  const data = await res.json();
+  setApplicantTokens(data.tokens.access, data.tokens.refresh, data.applicant);
+  return data;
+}
+
+export async function applicantLoginApi(payload: {
+  email: string;
+  password: string;
+}): Promise<{ applicant: Applicant; tokens: { access: string; refresh: string } }> {
+  const res = await fetch(`${API_BASE_URL}/api/applicants/login/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    let msg = `Login failed (${res.status})`;
+    try {
+      const err = await res.json();
+      msg = err.detail || err.error || JSON.stringify(err);
+    } catch {}
+    throw new Error(msg);
+  }
+
+  const data = await res.json();
+  setApplicantTokens(data.tokens.access, data.tokens.refresh, data.applicant);
+  return data;
+}
+
+export async function applicantGetResumesApi(): Promise<ApplicantResume[]> {
+  const token = getApplicantToken();
+  if (!token) return [];
+
+  const res = await fetch(`${API_BASE_URL}/api/applicants/me/resumes/`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.results)) return data.results;
+  return [];
+}
+
+export async function applicantUploadResumeApi(file: File): Promise<ApplicantResume> {
+  const token = getApplicantToken();
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_BASE_URL}/api/applicants/me/resumes/`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let msg = `Upload failed (${res.status})`;
+    try {
+      const err = await res.json();
+      msg = err.detail || err.error || JSON.stringify(err);
+    } catch {}
+    throw new Error(msg);
+  }
+
+  return res.json();
+}
+
+export async function applicantGetApplicationsApi(): Promise<ApplicantApplication[]> {
+  const token = getApplicantToken();
+  if (!token) return [];
+
+  const res = await fetch(`${API_BASE_URL}/api/applicants/me/applications/`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.results)) return data.results;
+  return [];
 }
 
 export async function recomputeJobRankings(jobId: string | number): Promise<{ detail: string; ranking_status: string }> {

@@ -5,6 +5,7 @@ import math
 import groq
 from celery import chord, group, shared_task
 from django.db import transaction
+from pgvector.django import MaxInnerProduct
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
 
@@ -253,6 +254,14 @@ def finalize_scoring(*args, job_id=None):
         normalized_retrieval_score = -application.retrieval_score
         score_application(application, normalized_retrieval_score)
 
+    with transaction.atomic():
+        for application in applications:
+            if application.final_score is not None:
+                application.pipeline_status = Application.PipelineStatus.PROCESSED
+            elif application.pipeline_status == Application.PipelineStatus.PENDING:
+                application.pipeline_status = Application.PipelineStatus.PROCESSED
+        Application.objects.bulk_update(applications, ["pipeline_status"])
+
     job.ranking_status = Job.RankingStatus.DONE
     job.save(update_fields=["ranking_status"])
 
@@ -378,3 +387,74 @@ def generate_application_profile_task(application_id):
         return
     application.llm_profile = result.model_dump()
     application.save(update_fields=["llm_profile"])
+
+
+@shared_task
+def process_single_application(application_id: int):
+    """
+    Unified single-application pipeline for applicant submissions:
+    1. Extracts text, chunks, and embeds resume if not already done.
+    2. Computes retrieval score against job.embedding.
+    3. Extracts skills & experience via LLM.
+    4. Computes composite final score.
+    5. Generates application profile (summary, strengths, gaps).
+    6. Updates pipeline_status to 'processed' (or 'failed' on error).
+    """
+    try:
+        application = Application.objects.select_related("job", "resume").get(
+            id=application_id
+        )
+    except Application.DoesNotExist:
+        logger.error("Application %s not found for single processing.", application_id)
+        return
+
+    application.pipeline_status = Application.PipelineStatus.PROCESSING
+    application.save(update_fields=["pipeline_status"])
+
+    try:
+        resume = application.resume
+        job = application.job
+
+        # Step 1: Process Resume if pending
+        if resume.status != Resume.Status.DONE:
+            process_resume(resume.id)
+            resume.refresh_from_db()
+
+        # Step 2: Compute retrieval score vs Job embedding
+        if job.embedding is not None:
+            chunks = list(
+                ResumeChunk.objects.filter(resume=resume)
+                .annotate(distance=MaxInnerProduct("embedding", job.embedding))
+                .order_by("distance")[:2]
+            )
+            if chunks:
+                mean_dist = sum(c.distance for c in chunks) / len(chunks)
+                application.retrieval_score = mean_dist
+                application.save(update_fields=["retrieval_score"])
+
+        # Step 3: Extract Skills & Experience from Resume
+        if resume.skills is None and resume.full_text:
+            extract_resume_profile(resume.id)
+            resume.refresh_from_db()
+
+        # Step 4: Finalize Scoring
+        normalized_retrieval_score = (
+            -application.retrieval_score if application.retrieval_score is not None else 0.0
+        )
+        score_application(application, normalized_retrieval_score)
+        application.refresh_from_db()
+
+        # Step 5: Profile Generation
+        generate_application_profile_task(application.id)
+        application.refresh_from_db()
+
+        # Mark processed
+        application.pipeline_status = Application.PipelineStatus.PROCESSED
+        application.save(update_fields=["pipeline_status"])
+
+    except Exception as exc:
+        logger.exception("Failed processing single application %s: %s", application_id, exc)
+        application.pipeline_status = Application.PipelineStatus.FAILED
+        application.save(update_fields=["pipeline_status"])
+        raise exc
+

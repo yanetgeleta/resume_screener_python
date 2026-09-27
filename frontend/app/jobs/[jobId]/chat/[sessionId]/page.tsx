@@ -80,7 +80,7 @@ export default function ChatSessionConversationPage({
     ) {
       autoSynthesizedRef.current = true;
       const headCount = job?.head_count || 5;
-      const synthesizedQuery = `Please provide a profile of the top ${headCount} candidates ranked by final_score, each with strengths, summary, and gaps.`;
+      const synthesizedQuery = `Please provide a profile of the top ${headCount} candidates ranked by final_score, including each candidate's strengths, summary, gaps, and contact/personal information (such as phone number, email, GitHub, LinkedIn, social media, or any other contact details found on their resume or application).`;
       sendQuery(synthesizedQuery);
     }
   }, [searchParams, isLoadingMessages, messages.length, job?.head_count, sendQuery]);
@@ -118,7 +118,7 @@ export default function ChatSessionConversationPage({
     await refetchJob();
     // Synthesize updated ranking summary query in this same chat per specification
     const headCount = job?.head_count || 5;
-    const synthesizedQuery = `Please provide an updated profile of the top ${headCount} candidates ranked by final_score, including each candidate's strengths, summary, and gaps.`;
+    const synthesizedQuery = `Please provide an updated profile of the top ${headCount} candidates ranked by final_score, including each candidate's strengths, summary, gaps, and contact/personal information (such as phone number, email, GitHub, LinkedIn, social media, or any other contact details found on their resume or application).`;
     sendQuery(synthesizedQuery);
   };
 

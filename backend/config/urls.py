@@ -22,6 +22,7 @@ from jobs.views import chat_stream_view
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("accounts.urls")),
+    path("api/applicants/", include("applicants.urls")),
     path("api/", include("jobs.urls")),
     path(
         "jobs/<int:job_id>/chat/<int:session_id>/",

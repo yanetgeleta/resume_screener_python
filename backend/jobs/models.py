@@ -49,7 +49,18 @@ class Resume(models.Model):
     experience_years = models.IntegerField(null=True, blank=True)
     full_text = models.TextField(blank=True, null=True)
     company = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="resumes"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="resumes",
+        null=True,
+        blank=True,
+    )
+    applicant = models.ForeignKey(
+        "applicants.Applicant",
+        on_delete=models.SET_NULL,
+        related_name="resumes",
+        null=True,
+        blank=True,
     )
     status = models.CharField(max_length=2, choices=Status, default=Status.PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -63,10 +74,42 @@ class Application(models.Model):
         SHORTLISTED = "SL", _("SHORTLISTED")
         NORMAL = "N", _("NORMAL")
 
+    class Source(models.TextChoices):
+        COMPANY_UPLOAD = "company_upload", _("Company Upload")
+        APPLICANT_SUBMITTED = "applicant_submitted", _("Applicant Submitted")
+
+    class PipelineStatus(models.TextChoices):
+        PENDING = "pending", _("Pending")
+        PROCESSING = "processing", _("Processing")
+        PROCESSED = "processed", _("Processed")
+        FAILED = "failed", _("Failed")
+
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name="applications")
     resume = models.ForeignKey(
         Resume, on_delete=models.CASCADE, related_name="applications"
     )
+    applicant = models.ForeignKey(
+        "applicants.Applicant",
+        on_delete=models.SET_NULL,
+        related_name="applications",
+        null=True,
+        blank=True,
+    )
+    source = models.CharField(
+        max_length=30,
+        choices=Source.choices,
+        default=Source.COMPANY_UPLOAD,
+    )
+    pipeline_status = models.CharField(
+        max_length=20,
+        choices=PipelineStatus.choices,
+        default=PipelineStatus.PENDING,
+    )
+    # Guest applicant fallback details
+    guest_full_name = models.CharField(max_length=200, blank=True, null=True)
+    guest_email = models.EmailField(blank=True, null=True)
+    guest_phone_number = models.CharField(max_length=50, blank=True, null=True)
+
     retrieval_score = models.FloatField(null=True, blank=True)
     status = models.CharField(max_length=2, choices=Status, default=Status.NORMAL)
     llm_profile = models.JSONField(default=None, blank=True, null=True)
@@ -77,6 +120,68 @@ class Application(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["job", "resume"], name="unique_job_resume")
         ]
+
+
+class JobApplicationField(models.Model):
+    """
+    Dynamic per-job custom questions configured by recruiters.
+    """
+
+    class FieldType(models.TextChoices):
+        TEXT = "text", _("Text")
+        TEXTAREA = "textarea", _("Textarea")
+        NUMBER = "number", _("Number")
+        BOOLEAN = "boolean", _("Boolean")
+        SINGLE_CHOICE = "single_choice", _("Single Choice")
+
+    job = models.ForeignKey(
+        Job,
+        on_delete=models.CASCADE,
+        related_name="application_fields",
+    )
+    label = models.CharField(max_length=255)
+    field_type = models.CharField(
+        max_length=20,
+        choices=FieldType.choices,
+        default=FieldType.TEXT,
+    )
+    choices = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Options for single_choice field types",
+    )
+    required = models.BooleanField(default=False)
+    order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"{self.job.title} - {self.label} ({self.field_type})"
+
+
+class ApplicationAnswer(models.Model):
+    """
+    Applicant responses to dynamic JobApplicationFields.
+    """
+
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="answers",
+    )
+    field = models.ForeignKey(
+        JobApplicationField,
+        on_delete=models.CASCADE,
+        related_name="answers",
+    )
+    value = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["field__order", "id"]
+
+    def __str__(self):
+        return f"App {self.application_id} - {self.field.label}: {self.value[:30]}"
 
 
 class ResumeChunk(models.Model):
