@@ -93,7 +93,17 @@ export default function ChatSessionConversationPage({
   // Auto-scroll to bottom as messages or streamed text updates
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, partialText]);
+  }, [messages, partialText, isStreaming]);
+
+  // Auto-resize textarea height as more lines are inputed
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      const scrollHeight = textareaRef.current.scrollHeight;
+      const newHeight = Math.min(Math.max(scrollHeight, 46), 200);
+      textareaRef.current.style.height = `${newHeight}px`;
+    }
+  }, [inputQuery]);
 
   // Check for locked state (no processed resumes exist yet)
   const isLocked =
@@ -107,6 +117,9 @@ export default function ChatSessionConversationPage({
 
     const textToSend = inputQuery.trim();
     setInputQuery("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "46px";
+    }
     sendQuery(textToSend);
   };
 
@@ -164,7 +177,7 @@ export default function ChatSessionConversationPage({
           <div className="flex items-center justify-center h-full text-xs text-zinc-500">
             Loading message history...
           </div>
-        ) : messages.length === 0 && !partialText ? (
+        ) : messages.length === 0 && !partialText && !isStreaming ? (
           <div className="max-w-xl mx-auto my-auto text-center space-y-3 py-12">
             <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-400 flex items-center justify-center mx-auto">
               <Sparkles className="w-6 h-6 text-blue-400" />
@@ -215,6 +228,23 @@ export default function ChatSessionConversationPage({
                 </div>
               );
             })}
+
+            {/* Client-side Thinking Indicator while waiting for model reply */}
+            {isStreaming && !partialText && (
+              <div className="flex gap-3 text-sm justify-start animate-fade-in">
+                <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5 animate-pulse">
+                  <Bot className="w-3.5 h-3.5" />
+                </div>
+                <div className="rounded-2xl px-4 py-3 bg-zinc-900/90 border border-blue-500/30 text-zinc-300 shadow-md shadow-blue-500/5 rounded-bl-xs flex items-center gap-2.5">
+                  <span className="text-xs text-zinc-400 font-medium">Thinking</span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:0ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:150ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:300ms]" />
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Live Streaming Bubble - strictly rendered only while streaming and not already in messages */}
             {isStreaming &&
@@ -285,7 +315,7 @@ export default function ChatSessionConversationPage({
             /* Normal Composer Form */
             <form
               onSubmit={handleSubmit}
-              className="relative flex items-center gap-2"
+              className="relative flex items-end gap-2"
             >
               <textarea
                 ref={textareaRef}
@@ -295,7 +325,7 @@ export default function ChatSessionConversationPage({
                 placeholder="Ask about candidate qualifications, skills, or ranking..."
                 rows={1}
                 disabled={isStreaming}
-                className="flex-1 bg-zinc-900/90 border border-zinc-700/70 focus:border-blue-500 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none resize-none min-h-[46px] max-h-32 transition-all shadow-inner"
+                className="flex-1 bg-zinc-900/90 border border-zinc-700/70 focus:border-blue-500 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none resize-none min-h-[46px] max-h-[200px] overflow-y-auto leading-relaxed transition-[border-color] shadow-inner"
               />
 
               {isStreaming ? (

@@ -16,8 +16,9 @@ import {
   Compass,
   User,
   LogIn,
+  LogOut,
 } from "lucide-react";
-import { searchJobsApi, Job, getStoredApplicant } from "@/lib/api";
+import { searchJobsApi, Job, getStoredApplicant, clearApplicantTokens } from "@/lib/api";
 
 export default function JobsMarketplacePage() {
   const [query, setQuery] = useState("");
@@ -85,6 +86,16 @@ export default function JobsMarketplacePage() {
               <span className="hidden sm:inline text-zinc-400 text-[11px] pl-1">
                 {applicant.full_name}
               </span>
+              <button
+                onClick={() => {
+                  clearApplicantTokens();
+                  setApplicant(null);
+                }}
+                className="p-1.5 rounded-xl text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                title="Sign out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -206,6 +217,13 @@ export default function JobsMarketplacePage() {
 
                 {/* Tags & Meta Row */}
                 <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-zinc-800/60 text-xs text-zinc-400">
+                  {job.head_count !== null && job.head_count !== undefined && (
+                    <span className="flex items-center gap-1 text-[11px] text-zinc-400">
+                      <Users className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Target: {job.head_count}</span>
+                    </span>
+                  )}
+
                   {job.required_experience_years !== null && (
                     <span className="flex items-center gap-1 text-[11px] text-zinc-400">
                       <Clock className="w-3.5 h-3.5 text-zinc-500" />

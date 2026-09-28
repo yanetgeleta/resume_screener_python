@@ -16,11 +16,13 @@ import {
   Plus,
   Clock,
   Sparkles,
+  LogOut,
 } from "lucide-react";
 import {
   applicantGetResumesApi,
   applicantUploadResumeApi,
   getApplicantToken,
+  clearApplicantTokens,
   ApplicantResume,
 } from "@/lib/api";
 
@@ -69,6 +71,11 @@ export default function ApplicantResumesPage() {
     }
   };
 
+  const handleLogout = () => {
+    clearApplicantTokens();
+    router.push("/applicant/login");
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
       {/* Top Navbar */}
@@ -89,6 +96,13 @@ export default function ApplicantResumesPage() {
           >
             Find Jobs
           </Link>
+          <button
+            onClick={handleLogout}
+            className="p-1.5 rounded-xl text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+            title="Sign out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </header>
 

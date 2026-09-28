@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from applicants.auth import IsApplicant, generate_applicant_tokens
+from applicants.models import Applicant
 from applicants.serializers import (
     ApplicantApplicationSerializer,
     ApplicantLoginSerializer,
@@ -14,6 +15,21 @@ from applicants.serializers import (
 )
 
 
+def associate_guest_applications(applicant: Applicant):
+    """
+    Links any existing guest applications (and their associated resumes)
+    submitted with this applicant's email address to their account.
+    """
+    guest_apps = Application.objects.filter(
+        applicant__isnull=True,
+        guest_email__iexact=applicant.email,
+    )
+    if guest_apps.exists():
+        resume_ids = list(guest_apps.values_list("resume_id", flat=True))
+        Resume.objects.filter(id__in=resume_ids, applicant__isnull=True).update(applicant=applicant)
+        guest_apps.update(applicant=applicant)
+
+
 class ApplicantSignupView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -21,6 +37,9 @@ class ApplicantSignupView(APIView):
         serializer = ApplicantSignupSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         applicant = serializer.save()
+
+        # Link any guest applications submitted earlier with the same email
+        associate_guest_applications(applicant)
 
         tokens = generate_applicant_tokens(applicant)
         return Response(
@@ -39,6 +58,9 @@ class ApplicantLoginView(APIView):
         serializer = ApplicantLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         applicant = serializer.validated_data["applicant"]
+
+        # Link any guest applications submitted earlier with the same email
+        associate_guest_applications(applicant)
 
         tokens = generate_applicant_tokens(applicant)
         return Response(

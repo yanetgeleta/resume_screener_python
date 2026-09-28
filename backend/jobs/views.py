@@ -321,12 +321,9 @@ class JobViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        has_processed = (
-            job.applications.filter(
-                pipeline_status=Application.PipelineStatus.PROCESSED
-            ).count()
-            >= job.head_count
-        )
+        has_processed = job.applications.filter(
+            pipeline_status=Application.PipelineStatus.PROCESSED
+        ).exists()
         if not has_processed:
             return Response(
                 {

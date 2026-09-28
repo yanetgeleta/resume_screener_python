@@ -16,14 +16,19 @@ import {
   Loader2,
   Send,
   UserCheck,
+  Users,
+  LogOut,
 } from "lucide-react";
 import {
   fetchJob,
   applyJobApi,
   applicantGetResumesApi,
+  applicantGetApplicationsApi,
   getStoredApplicant,
   getApplicantToken,
+  clearApplicantTokens,
   ApplicantResume,
+  ApplicantApplication,
   Job,
 } from "@/lib/api";
 
@@ -33,7 +38,7 @@ export default function JobDetailPage() {
   const jobId = params?.jobId as string;
 
   const [applicant, setApplicant] = useState(() => getStoredApplicant());
-  const [applicantToken, setApplicantToken] = useState(() => getApplicantToken());
+  const [applicantToken, setApplicantToken] = useState<string | null>(() => getApplicantToken());
 
   // Fixed fields
   const [fullName, setFullName] = useState(applicant?.full_name || "");
@@ -79,6 +84,17 @@ export default function JobDetailPage() {
     queryFn: applicantGetResumesApi,
     enabled: !!applicantToken,
   });
+
+  // If authenticated applicant, fetch their existing applications to detect already applied state
+  const { data: myApplications = [] } = useQuery<ApplicantApplication[]>({
+    queryKey: ["applicant-applications", applicantToken],
+    queryFn: applicantGetApplicationsApi,
+    enabled: !!applicantToken,
+  });
+
+  const existingApplication = applicantToken
+    ? myApplications.find((app) => String(app.job?.id) === String(jobId))
+    : null;
 
   const applyMutation = useMutation({
     mutationFn: async () => {
@@ -163,12 +179,33 @@ export default function JobDetailPage() {
           <span>Back to Marketplace</span>
         </Link>
 
-        {applicant && (
+        {applicant ? (
+          <div className="flex items-center gap-3">
+            <Link
+              href="/applicant/applications"
+              className="text-xs text-blue-400 hover:text-blue-300 font-medium"
+            >
+              My Applications
+            </Link>
+            <button
+              onClick={() => {
+                clearApplicantTokens();
+                setApplicant(null);
+                setApplicantToken(null);
+                router.push("/jobs");
+              }}
+              className="p-1.5 rounded-xl text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
           <Link
-            href="/applicant/applications"
-            className="text-xs text-blue-400 hover:text-blue-300 font-medium"
+            href="/applicant/login"
+            className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
           >
-            My Applications
+            Sign In
           </Link>
         )}
       </header>
@@ -187,12 +224,20 @@ export default function JobDetailPage() {
               )}
             </div>
 
-            {job.required_experience_years !== null && (
-              <span className="flex items-center gap-1 text-xs text-zinc-400 shrink-0">
-                <Clock className="w-4 h-4 text-blue-400" />
-                <span>{job.required_experience_years}+ years experience</span>
-              </span>
-            )}
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              {job.head_count !== null && job.head_count !== undefined && (
+                <span className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <Users className="w-4 h-4 text-emerald-400" />
+                  <span>Target: <strong className="text-zinc-200 font-medium">{job.head_count}</strong></span>
+                </span>
+              )}
+              {job.required_experience_years !== null && (
+                <span className="flex items-center gap-1 text-xs text-zinc-400">
+                  <Clock className="w-4 h-4 text-blue-400" />
+                  <span>{job.required_experience_years}+ years experience</span>
+                </span>
+              )}
+            </div>
           </div>
 
           <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-line pt-2 border-t border-zinc-800/60">
@@ -214,21 +259,29 @@ export default function JobDetailPage() {
           )}
         </div>
 
-        {/* Application Submission Form or Success View */}
-        {isSubmitted ? (
-          /* Confirmation state (Phase 8.4: Instant confirmation) */
+        {/* Application Submission Form or Success View / Already Applied */}
+        {isSubmitted || existingApplication ? (
+          /* Confirmation / Already Applied state */
           <div className="p-8 sm:p-10 rounded-3xl bg-zinc-900/70 border border-emerald-500/40 text-center space-y-6 shadow-2xl backdrop-blur-xl">
             <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-10 h-10" />
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-white">Application Submitted!</h2>
+              <h2 className="text-2xl font-bold text-white">
+                {existingApplication && !isSubmitted
+                  ? "You've Already Applied to this Position"
+                  : "Application Submitted!"}
+              </h2>
               <p className="text-sm text-zinc-300">
-                Thank you for applying to <strong className="text-white">{job.title}</strong>.
+                {existingApplication && !isSubmitted
+                  ? `You have already submitted an application for ${job.title}.`
+                  : `Thank you for applying to ${job.title}.`}
               </p>
               <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-                Your application (ID #{applicationId}) has been received and queued for screening. You do not need to wait on this page.
+                {existingApplication && !isSubmitted
+                  ? `Application ID #${existingApplication.id} • Status: ${(existingApplication.pipeline_status || "queued").toUpperCase()} • Submitted on ${new Date(existingApplication.created_at).toLocaleDateString()}`
+                  : `Your application (ID #${applicationId}) has been received and queued for screening. You do not need to wait on this page.`}
               </p>
             </div>
 
@@ -455,20 +508,40 @@ export default function JobDetailPage() {
                           className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700/80 text-zinc-100 text-xs focus:outline-none focus:border-blue-500 shadow-inner"
                         />
                       ) : field.field_type === "boolean" ? (
-                        <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer pt-1">
-                          <input
-                            type="checkbox"
-                            checked={dynamicAnswers[field.id!] === "true"}
-                            onChange={(e) =>
-                              setDynamicAnswers((prev) => ({
-                                ...prev,
-                                [field.id!]: e.target.checked ? "true" : "false",
-                              }))
-                            }
-                            className="rounded border-zinc-700 text-blue-600 focus:ring-0"
-                          />
-                          <span>Yes</span>
-                        </label>
+                        <div className="flex items-center gap-6 pt-1">
+                          <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`field_${field.id}`}
+                              required={field.required}
+                              checked={dynamicAnswers[field.id!] === "true"}
+                              onChange={() =>
+                                setDynamicAnswers((prev) => ({
+                                  ...prev,
+                                  [field.id!]: "true",
+                                }))
+                              }
+                              className="text-blue-600 border-zinc-700 focus:ring-blue-500/20 bg-zinc-950 cursor-pointer"
+                            />
+                            <span>Yes</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`field_${field.id}`}
+                              required={field.required}
+                              checked={dynamicAnswers[field.id!] === "false"}
+                              onChange={() =>
+                                setDynamicAnswers((prev) => ({
+                                  ...prev,
+                                  [field.id!]: "false",
+                                }))
+                              }
+                              className="text-blue-600 border-zinc-700 focus:ring-blue-500/20 bg-zinc-950 cursor-pointer"
+                            />
+                            <span>No</span>
+                          </label>
+                        </div>
                       ) : field.field_type === "single_choice" ? (
                         <select
                           required={field.required}

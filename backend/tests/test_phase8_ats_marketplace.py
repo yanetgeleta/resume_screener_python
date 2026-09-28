@@ -64,6 +64,43 @@ class TestApplicantAuth:
         assert me_response.status_code == status.HTTP_200_OK
         assert me_response.json()["email"] == "login_user@example.com"
 
+    def test_guest_application_associated_on_signup(self, api_client):
+        job = JobFactory()
+        resume = ResumeFactory(applicant=None)
+        guest_app = ApplicationFactory(
+            job=job,
+            resume=resume,
+            applicant=None,
+            guest_email="guest.user@example.com",
+            guest_full_name="Guest User",
+            guest_phone_number="+1987654321",
+        )
+
+        signup_data = {
+            "email": "guest.user@example.com",
+            "full_name": "Guest User",
+            "phone_number": "+1987654321",
+            "password": "StrongPassword123!",
+        }
+        response = api_client.post("/api/applicants/signup/", signup_data, format="json")
+        assert response.status_code == status.HTTP_201_CREATED
+
+        applicant = Applicant.objects.get(email="guest.user@example.com")
+        guest_app.refresh_from_db()
+        resume.refresh_from_db()
+
+        assert guest_app.applicant == applicant
+        assert resume.applicant == applicant
+
+        # Verify applicant can now see the application via /api/applicants/me/applications/
+        access_token = response.json()["tokens"]["access"]
+        api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        apps_response = api_client.get("/api/applicants/me/applications/")
+        assert apps_response.status_code == status.HTTP_200_OK
+        apps_data = apps_response.json()
+        assert len(apps_data) == 1
+        assert apps_data[0]["id"] == guest_app.id
+
 
 @pytest.mark.django_db
 class TestJobApplicationFieldsAndSearch:

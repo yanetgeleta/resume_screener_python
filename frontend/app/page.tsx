@@ -251,13 +251,12 @@ export default function HomePage() {
                           {job.title}
                         </h4>
                         <span
-                          className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full shrink-0 ${
-                            job.ranking_status === "done"
+                          className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full shrink-0 ${job.ranking_status === "done"
                               ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                               : job.ranking_status === "computing"
-                              ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                              : "bg-zinc-800 text-zinc-400 border border-zinc-700"
-                          }`}
+                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                            }`}
                         >
                           {job.ranking_status ? job.ranking_status.replace("_", " ") : "not started"}
                         </span>
