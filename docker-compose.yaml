@@ -20,12 +20,14 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      - HF_HOME=/app/.hf_cache
       - HF_HUB_OFFLINE=1
       - DJANGO_SETTINGS_MODULE=config.settings.development
       - REDIS_URL=redis://redis:6379/1
       - REDIS_HOST=redis
     volumes:
       - resumes_data:/app/resumes
+      - hf_cache:/app/.hf_cache
     depends_on:
       redis:
         condition: service_healthy
@@ -39,12 +41,14 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - HF_HUB_OFFLINE=0
+      - HF_HOME=/app/.hf_cache
+      - HF_HUB_OFFLINE=1
       - DJANGO_SETTINGS_MODULE=config.settings.development
       - REDIS_URL=redis://redis:6379/1
       - REDIS_HOST=redis
     volumes:
       - resumes_data:/app/resumes # Worker reads the exact same disk
+      - hf_cache:/app/.hf_cache
     depends_on:
       redis:
         condition: service_healthy
@@ -60,3 +64,4 @@ services:
 
 volumes:
   resumes_data: # Declares shared named volume
+  hf_cache:
