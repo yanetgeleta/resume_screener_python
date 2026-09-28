@@ -21,8 +21,8 @@ export default function ChatSessionConversationPage({
   params,
 }: {
   params:
-    | Promise<{ jobId: string; sessionId: string }>
-    | { jobId: string; sessionId: string };
+  | Promise<{ jobId: string; sessionId: string }>
+  | { jobId: string; sessionId: string };
 }) {
   const unwrappedParams = use(params as any) as {
     jobId: string;
@@ -61,6 +61,7 @@ export default function ChatSessionConversationPage({
     sendQuery,
     abortStream,
     isStreaming,
+    isThinking,
     partialText,
     errorDetail,
   } = useChatStream({
@@ -93,7 +94,7 @@ export default function ChatSessionConversationPage({
   // Auto-scroll to bottom as messages or streamed text updates
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, partialText, isStreaming]);
+  }, [messages, partialText, isStreaming, isThinking]);
 
   // Auto-resize textarea height as more lines are inputed
   useEffect(() => {
@@ -198,9 +199,8 @@ export default function ChatSessionConversationPage({
               return (
                 <div
                   key={msg.id}
-                  className={`flex gap-3 text-sm ${
-                    isUser ? "justify-end" : "justify-start"
-                  }`}
+                  className={`flex gap-3 text-sm ${isUser ? "justify-end" : "justify-start"
+                    }`}
                 >
                   {!isUser && (
                     <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
@@ -208,11 +208,10 @@ export default function ChatSessionConversationPage({
                     </div>
                   )}
                   <div
-                    className={`rounded-2xl px-4 py-3 max-w-[85%] leading-relaxed shadow-sm ${
-                      isUser
-                        ? "bg-blue-600 text-white rounded-br-xs whitespace-pre-wrap"
-                        : "bg-zinc-900/90 border border-zinc-800/80 text-zinc-200 rounded-bl-xs"
-                    }`}
+                    className={`rounded-2xl px-4 py-3 max-w-[85%] leading-relaxed shadow-sm ${isUser
+                      ? "bg-blue-600 text-white rounded-br-xs whitespace-pre-wrap"
+                      : "bg-zinc-900/90 border border-zinc-800/80 text-zinc-200 rounded-bl-xs"
+                      }`}
                   >
                     {isUser ? (
                       msg.content
@@ -230,17 +229,17 @@ export default function ChatSessionConversationPage({
             })}
 
             {/* Client-side Thinking Indicator while waiting for model reply */}
-            {isStreaming && !partialText && (
+            {(isThinking || (isStreaming && !partialText)) && (
               <div className="flex gap-3 text-sm justify-start animate-fade-in">
                 <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5 animate-pulse">
                   <Bot className="w-3.5 h-3.5" />
                 </div>
                 <div className="rounded-2xl px-4 py-3 bg-zinc-900/90 border border-blue-500/30 text-zinc-300 shadow-md shadow-blue-500/5 rounded-bl-xs flex items-center gap-2.5">
                   <span className="text-xs text-zinc-400 font-medium">Thinking</span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:0ms]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:150ms]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:300ms]" />
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "300ms" }} />
                   </span>
                 </div>
               </div>

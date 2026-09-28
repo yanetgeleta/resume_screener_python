@@ -411,16 +411,14 @@ export default function JobDetailPage() {
                           setSelectedResumeId(String(r.id));
                           setResumeFile(null);
                         }}
-                        className={`p-3 rounded-xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
-                          selectedResumeId === String(r.id)
-                            ? "bg-blue-600/10 border-blue-500 text-white"
-                            : "bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700"
-                        }`}
+                        className={`p-3 rounded-xl border text-left flex items-center gap-3 transition-all cursor-pointer ${selectedResumeId === String(r.id)
+                          ? "bg-blue-600/10 border-blue-500 text-white"
+                          : "bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700"
+                          }`}
                       >
                         <FileText
-                          className={`w-4 h-4 shrink-0 ${
-                            selectedResumeId === String(r.id) ? "text-blue-400" : "text-zinc-500"
-                          }`}
+                          className={`w-4 h-4 shrink-0 ${selectedResumeId === String(r.id) ? "text-blue-400" : "text-zinc-500"
+                            }`}
                         />
                         <div className="min-w-0 flex-1 truncate">
                           <div className="text-xs font-medium truncate">{r.original_filename}</div>

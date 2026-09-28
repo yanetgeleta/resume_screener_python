@@ -6,12 +6,13 @@ import { streamChat } from "./streamChat";
 import { ChatMessage } from "./api";
 
 export interface StreamState {
-  status: "idle" | "streaming" | "error";
+  status: "idle" | "thinking" | "streaming" | "error";
   partialText: string;
   errorDetail: string | null;
 }
 
 export type StreamAction =
+  | { type: "START" }
   | { type: "CHUNK"; payload: string }
   | { type: "ERROR"; payload: string }
   | { type: "DONE" }
@@ -29,6 +30,13 @@ export function streamReducer(
   action: StreamAction
 ): StreamState {
   switch (action.type) {
+    case "START":
+      return {
+        ...state,
+        status: "thinking",
+        partialText: "",
+        errorDetail: null,
+      };
     case "CHUNK":
       return {
         ...state,
@@ -123,7 +131,7 @@ export function useChatStream({
       abortControllerRef.current = controller;
       accumulatedTextRef.current = "";
 
-      dispatch({ type: "RESET" });
+      dispatch({ type: "START" });
 
       // Optimistically append the user message into the cache immediately
       // This ensures the user message NEVER disappears from screen while waiting for the model
@@ -226,7 +234,8 @@ export function useChatStream({
     state,
     sendQuery,
     abortStream,
-    isStreaming: state.status === "streaming",
+    isStreaming: state.status === "streaming" || state.status === "thinking",
+    isThinking: state.status === "thinking",
     partialText: state.partialText,
     errorDetail: state.errorDetail,
   };
