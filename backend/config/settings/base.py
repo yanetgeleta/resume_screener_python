@@ -40,7 +40,10 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = os.getenv(
+    "CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+).split(",")
 CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = "config.urls"
@@ -95,9 +98,7 @@ MEDIA_URL = "/resumes/"
 
 # Django REST Framework & JWT
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "applicants.auth.MultiUserJWTAuthentication",
-    ),
+    "DEFAULT_AUTHENTICATION_CLASSES": ("applicants.auth.MultiUserJWTAuthentication",),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
 }
 

@@ -1,6 +1,8 @@
 import json
 from datetime import timedelta
 
+from accounts.models import Company
+from applicants.auth import IsCompany
 from applicants.models import Applicant
 from asgiref.sync import sync_to_async
 from django.db import models
@@ -58,6 +60,15 @@ class JobViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ["search", "apply", "retrieve"]:
             return [permissions.AllowAny()]
+        if self.action in [
+            "create",
+            "update",
+            "partial_update",
+            "destroy",
+            "recompute",
+            "see_result",
+        ]:
+            return [IsCompany()]
         return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
@@ -315,7 +326,9 @@ class JobViewSet(viewsets.ModelViewSet):
         - Returns session_id for immediate navigation without wait-states.
         """
         job = self.get_object()
-        if not request.user.is_staff and job.company_id != request.user.id:
+        if not request.user.is_staff and (
+            not isinstance(request.user, Company) or job.company_id != request.user.id
+        ):
             return Response(
                 {"error": "Permission denied for this job."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -351,7 +364,7 @@ class JobViewSet(viewsets.ModelViewSet):
 
 class ResumeViewSet(viewsets.ModelViewSet):
     serializer_class = ResumeSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsCompany()]
     parser_classes = [FormParser, MultiPartParser, JSONParser]
 
     def get_queryset(self):
@@ -428,7 +441,7 @@ class ResumeViewSet(viewsets.ModelViewSet):
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     serializer_class = ApplicationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsCompany()]
 
     def get_queryset(self):
         user = self.request.user
@@ -443,7 +456,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
 class ChatSessionViewSet(viewsets.ModelViewSet):
     serializer_class = ChatSessionSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsCompany()]
 
     def get_queryset(self):
         user = self.request.user
@@ -551,7 +564,9 @@ async def chat_stream_view(request, session_id: int, job_id: int | None = None):
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    if not user.is_staff and session.company_id != user.id:
+    if not user.is_staff and (
+        not isinstance(user, Company) or session.company_id != user.id
+    ):
         return JsonResponse(
             {"error": "Permission denied for this chat session."},
             status=status.HTTP_403_FORBIDDEN,
