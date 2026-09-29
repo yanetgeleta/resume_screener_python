@@ -1,15 +1,23 @@
 from celery.signals import worker_process_init
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import (
+    SentenceTransformer,
+)
 
 _model = None
 
 
+# I was going to quantize the model and run it with onnx but there is already one that is optimized on huggingface
+# so using it
 def _get_model() -> SentenceTransformer:
     global _model
     if _model is None:
         _model = SentenceTransformer(
             "sentence-transformers/all-MiniLM-L6-v2",
             device="cpu",
+            backend="onnx",
+            model_kwargs={
+                "file_name": "onnx/model_O3.onnx",  # Uses pre-optimized ONNX graph from HF
+            },
         )
     return _model
 
