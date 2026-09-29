@@ -21,7 +21,7 @@ services:
       - ./backend/.env
     environment:
       - HF_HOME=/app/.hf_cache
-      - HF_HUB_OFFLINE=1
+      - HF_HUB_OFFLINE=0
       - DJANGO_SETTINGS_MODULE=config.settings.development
       - REDIS_URL=redis://redis:6379/1
       - REDIS_HOST=redis
@@ -42,7 +42,7 @@ services:
       - ./backend/.env
     environment:
       - HF_HOME=/app/.hf_cache
-      - HF_HUB_OFFLINE=1
+      - HF_HUB_OFFLINE=0
       - DJANGO_SETTINGS_MODULE=config.settings.development
       - REDIS_URL=redis://redis:6379/1
       - REDIS_HOST=redis

@@ -364,7 +364,7 @@ class JobViewSet(viewsets.ModelViewSet):
 
 class ResumeViewSet(viewsets.ModelViewSet):
     serializer_class = ResumeSerializer
-    permission_classes = [permissions.IsAuthenticated, IsCompany()]
+    permission_classes = [permissions.IsAuthenticated, IsCompany]
     parser_classes = [FormParser, MultiPartParser, JSONParser]
 
     def get_queryset(self):
@@ -441,7 +441,7 @@ class ResumeViewSet(viewsets.ModelViewSet):
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     serializer_class = ApplicationSerializer
-    permission_classes = [permissions.IsAuthenticated, IsCompany()]
+    permission_classes = [permissions.IsAuthenticated, IsCompany]
 
     def get_queryset(self):
         user = self.request.user
@@ -456,7 +456,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
 class ChatSessionViewSet(viewsets.ModelViewSet):
     serializer_class = ChatSessionSerializer
-    permission_classes = [permissions.IsAuthenticated, IsCompany()]
+    permission_classes = [permissions.IsAuthenticated, IsCompany]
 
     def get_queryset(self):
         user = self.request.user

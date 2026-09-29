@@ -1,14 +1,14 @@
-import io
 import json
+
 import pytest
+from applicants.auth import generate_applicant_tokens
+from applicants.models import Applicant
 from django.core.files.uploadedfile import SimpleUploadedFile
+from jobs.models import Application, ApplicationAnswer, ChatSession, Job
+from jobs.services.chat import format_ranked_candidates_context
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from applicants.auth import generate_applicant_tokens
-from applicants.models import Applicant
-from jobs.models import Application, ApplicationAnswer, ChatSession, Job, JobApplicationField, Resume
-from jobs.services.chat import format_ranked_candidates_context
 from tests.factories import (
     ApplicantFactory,
     ApplicationFactory,
@@ -33,7 +33,9 @@ class TestApplicantAuth:
             "phone_number": "+1234567890",
             "password": "StrongPassword123!",
         }
-        response = api_client.post("/api/applicants/signup/", signup_data, format="json")
+        response = api_client.post(
+            "/api/applicants/signup/", signup_data, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
         data = response.json()
         assert "tokens" in data
@@ -48,7 +50,9 @@ class TestApplicantAuth:
         assert applicant.password != "StrongPassword123!"
 
     def test_applicant_login_and_profile_access(self, api_client):
-        applicant = ApplicantFactory(email="login_user@example.com", password="SecurePassword123!")
+        applicant = ApplicantFactory(
+            email="login_user@example.com", password="SecurePassword123!"
+        )
         login_data = {
             "email": "login_user@example.com",
             "password": "SecurePassword123!",
@@ -82,7 +86,9 @@ class TestApplicantAuth:
             "phone_number": "+1987654321",
             "password": "StrongPassword123!",
         }
-        response = api_client.post("/api/applicants/signup/", signup_data, format="json")
+        response = api_client.post(
+            "/api/applicants/signup/", signup_data, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
         applicant = Applicant.objects.get(email="guest.user@example.com")
@@ -138,13 +144,27 @@ class TestJobApplicationFieldsAndSearch:
         job = Job.objects.get(id=job_data["id"])
         fields = job.application_fields.all()
         assert fields.count() == 2
-        assert fields.filter(label="GitHub Profile URL", field_type="text", required=True).exists()
-        assert fields.filter(label="Work Authorization", field_type="single_choice").exists()
+        assert fields.filter(
+            label="GitHub Profile URL", field_type="text", required=True
+        ).exists()
+        assert fields.filter(
+            label="Work Authorization", field_type="single_choice"
+        ).exists()
 
     def test_job_search_public(self, api_client):
         company = CompanyFactory()
-        JobFactory(company=company, title="Lead Python Django Developer", description="Backend APIs", is_active=True)
-        JobFactory(company=company, title="Marketing Specialist", description="SEO & Social Media", is_active=True)
+        JobFactory(
+            company=company,
+            title="Lead Python Django Developer",
+            description="Backend APIs",
+            is_active=True,
+        )
+        JobFactory(
+            company=company,
+            title="Marketing Specialist",
+            description="SEO & Social Media",
+            is_active=True,
+        )
 
         # Public search without authentication
         response = api_client.get("/api/jobs/search/?q=Django")
@@ -159,20 +179,28 @@ class TestJobApplyFlow:
     def test_apply_as_authenticated_applicant_with_custom_answers(self, api_client):
         company = CompanyFactory()
         job = JobFactory(company=company, is_active=True)
-        field1 = JobApplicationFieldFactory(job=job, label="Portfolio Link", field_type="text", required=True)
+        field1 = JobApplicationFieldFactory(
+            job=job, label="Portfolio Link", field_type="text", required=True
+        )
         applicant = ApplicantFactory(email="dev@example.com")
         tokens = generate_applicant_tokens(applicant)
 
-        pdf_file = SimpleUploadedFile("resume.pdf", b"%PDF-1.4 dummy pdf content", content_type="application/pdf")
+        pdf_file = SimpleUploadedFile(
+            "resume.pdf", b"%PDF-1.4 dummy pdf content", content_type="application/pdf"
+        )
         api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
 
-        answers = json.dumps([{"field_id": field1.id, "value": "https://github.com/developer"}])
+        answers = json.dumps(
+            [{"field_id": field1.id, "value": "https://github.com/developer"}]
+        )
         payload = {
             "file": pdf_file,
             "answers": answers,
         }
 
-        response = api_client.post(f"/api/jobs/{job.id}/apply/", payload, format="multipart")
+        response = api_client.post(
+            f"/api/jobs/{job.id}/apply/", payload, format="multipart"
+        )
         assert response.status_code == status.HTTP_201_CREATED
         data = response.json()
         assert data["status"] == "submitted"
@@ -189,7 +217,11 @@ class TestJobApplyFlow:
     def test_apply_as_guest_applicant(self, api_client):
         company = CompanyFactory()
         job = JobFactory(company=company, is_active=True)
-        pdf_file = SimpleUploadedFile("guest_resume.pdf", b"%PDF-1.4 dummy pdf content", content_type="application/pdf")
+        pdf_file = SimpleUploadedFile(
+            "guest_resume.pdf",
+            b"%PDF-1.4 dummy pdf content",
+            content_type="application/pdf",
+        )
 
         payload = {
             "full_name": "Guest Candidate",
@@ -198,7 +230,9 @@ class TestJobApplyFlow:
             "file": pdf_file,
         }
 
-        response = api_client.post(f"/api/jobs/{job.id}/apply/", payload, format="multipart")
+        response = api_client.post(
+            f"/api/jobs/{job.id}/apply/", payload, format="multipart"
+        )
         assert response.status_code == status.HTTP_201_CREATED
         data = response.json()
         assert data["status"] == "submitted"
@@ -235,7 +269,9 @@ class TestSeeResultAndContactPrompt:
         assert res_after.status_code == status.HTTP_200_OK
         data = res_after.json()
         assert "session_id" in data
-        assert ChatSession.objects.filter(id=data["session_id"], job=job, company=company).exists()
+        assert ChatSession.objects.filter(
+            id=data["session_id"], job=job, company=company
+        ).exists()
 
     def test_candidate_context_includes_contact_and_personal_details(self):
         applicant = ApplicantFactory(
@@ -250,7 +286,9 @@ class TestSeeResultAndContactPrompt:
             experience_years=5,
         )
         job = JobFactory()
-        field = JobApplicationFieldFactory(job=job, label="Portfolio Link", field_type="text")
+        field = JobApplicationFieldFactory(
+            job=job, label="Portfolio Link", field_type="text"
+        )
 
         app = ApplicationFactory(
             job=job,
@@ -260,7 +298,9 @@ class TestSeeResultAndContactPrompt:
             retrieval_score=-0.85,
             pipeline_status=Application.PipelineStatus.PROCESSED,
         )
-        ApplicationAnswer.objects.create(application=app, field=field, value="https://alexrivera.dev")
+        ApplicationAnswer.objects.create(
+            application=app, field=field, value="https://alexrivera.dev"
+        )
 
         context = format_ranked_candidates_context([app])
 

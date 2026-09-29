@@ -128,7 +128,6 @@ def recompute_job_rankings(job_id, multiplier: int = 5):
     retry_backoff_max=600,
     retry_kwargs={"max_retries": 5},
     retry_jitter=True,
-    rate_limit="4/m",
 )
 def extract_resume_profile(resume_id):
     """Extracts skills and experience from resumes and updates the skills and experience_years field"""
@@ -329,7 +328,6 @@ def _build_profile_user_prompt(
     retry_backoff_max=600,
     retry_kwargs={"max_retries": 5},
     retry_jitter=True,
-    rate_limit="4/m",
 )
 def generate_application_profile_task(application_id):
     """builds a profile for the exact head_count, using all the information so far from applications process"""

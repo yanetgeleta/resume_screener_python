@@ -1,3 +1,5 @@
+import uuid
+
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 
@@ -8,6 +10,8 @@ class Applicant(models.Model):
     Uses Argon2/standard Django password hashing and parallel JWT auth.
     """
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # id = models.CharField(primary_key=True, max_length=50)
     email = models.EmailField(unique=True, null=False, blank=False)
     password = models.CharField(max_length=255)
     full_name = models.CharField(max_length=200)

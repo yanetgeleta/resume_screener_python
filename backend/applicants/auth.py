@@ -1,6 +1,6 @@
 import logging
-from typing import Optional, Tuple
 
+from accounts.models import Company
 from rest_framework import permissions
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -91,5 +91,5 @@ class IsCompany(permissions.BasePermission):
         return bool(
             request.user
             and request.user.is_authenticated
-            and not isinstance(request.user, Applicant)
+            and isinstance(request.user, Company)  # Explicit inclusion
         )

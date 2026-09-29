@@ -1,3 +1,5 @@
+import uuid
+
 from django.contrib.auth.models import (
     AbstractBaseUser,
     BaseUserManager,
@@ -35,6 +37,8 @@ class CompanyManager(BaseUserManager):
 
 
 class Company(AbstractBaseUser, PermissionsMixin):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # id = models.CharField(primary_key=True, max_length=50)
     email = models.EmailField(unique=True, null=False, blank=False)
     company_name = models.CharField(max_length=200)
     is_active = models.BooleanField(default=True)
