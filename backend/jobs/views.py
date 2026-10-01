@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import timedelta
 
@@ -60,7 +61,7 @@ class JobViewSet(viewsets.ModelViewSet):
     serializer_class = JobSerializer
 
     def get_permissions(self):
-        if self.action in ["search", "apply", "retrieve"]:
+        if self.action in ["search", "apply", "retrieve", "list"]:
             return [permissions.AllowAny()]
         if self.action in [
             "create",
@@ -129,10 +130,14 @@ class JobViewSet(viewsets.ModelViewSet):
         text_match_ids = set(text_matches.values_list("id", flat=True))
 
         # 2. Semantic vector similarity
-        query_vec = embed_text(query)
-        annotated_jobs = jobs_qs.exclude(embedding__isnull=True).annotate(
-            semantic_dist=MaxInnerProduct("embedding", query_vec)
-        )
+        annotated_jobs = []
+        try:
+            query_vec = embed_text(query)
+            annotated_jobs = jobs_qs.exclude(embedding__isnull=True).annotate(
+                semantic_dist=MaxInnerProduct("embedding", query_vec)
+            )
+        except Exception:
+            annotated_jobs = []
 
         job_scores = {}
         for j in jobs_qs:
@@ -146,10 +151,12 @@ class JobViewSet(viewsets.ModelViewSet):
 
         # Blend: 0.5 text + 0.5 normalized semantic
         ranked_jobs = []
+        CUTOFF_SEMANTIC_SIMILARITY = 0.30
         for j_id, (t_score, sem_sim, job_obj) in job_scores.items():
             norm_sem = max(0.0, min(1.0, (sem_sim + 1.0) / 2.0))
             blended_score = (0.5 * t_score) + (0.5 * norm_sem)
-            if blended_score > 0.05 or j_id in text_match_ids:
+            # Cutoff: Discard totally unrelated jobs. Require a direct text match or meaningful semantic similarity
+            if j_id in text_match_ids or sem_sim >= CUTOFF_SEMANTIC_SIMILARITY:
                 ranked_jobs.append((blended_score, job_obj))
 
         ranked_jobs.sort(key=lambda x: x[0], reverse=True)
@@ -414,25 +421,21 @@ class ResumeViewSet(viewsets.ModelViewSet):
             file_bytes = file_obj.read()
             file_obj.seek(0)
 
-            with pymupdf.open(stream=file_bytes, filetype="pdf") as doc:
-                raw_text = "".join(page.get_text() for page in doc)
-                content_hash = hash_resume_text(raw_text)
+            content_hash = hashlib.sha256(file_bytes).hexdigest()
 
-                if content_hash and content_hash in existing_hashes:
-                    exisiting_resume = Resume.objects.filter(
-                        company=self.request.user, content_hash=content_hash
-                    ).first()
-                    if exisiting_resume:
-                        resumes_to_link.append(exisiting_resume)
-                        continue
-                    new_payload.append(
-                        {
-                            "file": file_obj,
-                            "original_filename": file_obj.name,
-                            "full_text": raw_text,
-                            "content_hash": content_hash,
-                        }
-                    )
+            if content_hash and content_hash in existing_hashes:
+                exisiting_resume = Resume.objects.filter(
+                    company=self.request.user, content_hash=content_hash
+                ).first()
+                if exisiting_resume:
+                    resumes_to_link.append(exisiting_resume)
+                    continue
+                new_payload.append(
+                    {
+                        "file": file_obj,
+                        "original_filename": file_obj.name,
+                    }
+                )
         if new_payload:
             serializer = self.get_serializer(data=new_payload, many=True)
             serializer.is_valid(raise_exception=True)

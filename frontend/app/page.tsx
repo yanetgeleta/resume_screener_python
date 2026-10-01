@@ -1,26 +1,24 @@
 "use client";
 
-import React from "react";
-import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import {
-  Briefcase,
-  Plus,
-  MessageSquare,
-  Sparkles,
-  ArrowRight,
-  Bot,
-  LogIn,
-  LogOut,
-  UserPlus,
-  Layers,
-  ChevronRight,
-  Lock,
-  RefreshCw,
-  Check,
-} from "lucide-react";
 import { fetchJobs } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
+import { useQuery } from "@tanstack/react-query";
+import {
+  ArrowRight,
+  Bot,
+  Briefcase,
+  Check,
+  Lock,
+  LogIn,
+  LogOut,
+  MessageSquare,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  UserPlus
+} from "lucide-react";
+import Link from "next/link";
+import React from "react";
 
 export default function HomePage() {
   const { isAuthenticated, email, logout, refreshAuth, isRefreshing, isLoading: isAuthLoading } = useAuth();
@@ -236,9 +234,9 @@ export default function HomePage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {jobs.map((job: any) => {
-                const hasProcessed =
-                  (job.processed_application_count && job.processed_application_count >= 1) ||
-                  job.ranking_status === "done";
+                const targetHeadCount = job.head_count || 1;
+                const processedCount = job.processed_application_count ?? 0;
+                const canSeeResult = processedCount >= targetHeadCount;
 
                 return (
                   <div
@@ -288,7 +286,7 @@ export default function HomePage() {
                       </Link>
 
                       <div className="flex items-center gap-2">
-                        {hasProcessed ? (
+                        {canSeeResult ? (
                           <button
                             onClick={async () => {
                               try {
@@ -307,9 +305,9 @@ export default function HomePage() {
                         ) : (
                           <span
                             className="px-2.5 py-1.5 rounded-lg bg-zinc-800/50 text-zinc-500 text-[11px] cursor-not-allowed border border-zinc-800"
-                            title="See result will be active once at least one candidate application is processed"
+                            title={`See result will be active once at least ${targetHeadCount} candidate application${targetHeadCount > 1 ? "s are" : " is"} processed (${processedCount}/${targetHeadCount})`}
                           >
-                            Result Pending
+                            Result Pending ({processedCount}/{targetHeadCount})
                           </span>
                         )}
 

@@ -1,24 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
-import Link from "next/link";
+import { clearApplicantTokens, fetchPublicJobs, getStoredApplicant, Job, searchJobsApi } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ArrowRight,
   Briefcase,
-  Search,
   Building2,
   Clock,
-  Sparkles,
-  ArrowRight,
-  Filter,
-  CheckCircle2,
-  Users,
   Compass,
-  User,
   LogIn,
   LogOut,
+  Search,
+  Sparkles,
+  Users
 } from "lucide-react";
-import { searchJobsApi, Job, getStoredApplicant, clearApplicantTokens } from "@/lib/api";
+import Link from "next/link";
+import React, { useState } from "react";
 
 export default function JobsMarketplacePage() {
   const [query, setQuery] = useState("");
@@ -39,13 +36,15 @@ export default function JobsMarketplacePage() {
     return () => clearTimeout(timer);
   }, [query]);
 
+  const isSearching = debouncedQuery.trim().length > 0;
+
   const {
     data: jobs = [],
     isLoading,
     error,
   } = useQuery<Job[]>({
-    queryKey: ["jobs-search", debouncedQuery],
-    queryFn: () => searchJobsApi(debouncedQuery),
+    queryKey: isSearching ? ["jobs-search", debouncedQuery] : ["all-public-jobs"],
+    queryFn: () => (isSearching ? searchJobsApi(debouncedQuery) : fetchPublicJobs()),
   });
 
   return (

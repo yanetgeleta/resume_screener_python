@@ -18,12 +18,12 @@ def generate_applicant_tokens(applicant: Applicant) -> dict:
     """
     refresh = RefreshToken()
     refresh["user_type"] = "applicant"
-    refresh["user_id"] = applicant.id
+    refresh["user_id"] = str(applicant.id)
     refresh["email"] = applicant.email
 
     access = refresh.access_token
     access["user_type"] = "applicant"
-    access["user_id"] = applicant.id
+    access["user_id"] = str(applicant.id)
     access["email"] = applicant.email
 
     return {

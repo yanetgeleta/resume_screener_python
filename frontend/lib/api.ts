@@ -323,6 +323,27 @@ export async function fetchJobs(): Promise<Job[]> {
   return [];
 }
 
+export async function fetchPublicJobs(): Promise<Job[]> {
+  const applicantToken = getApplicantToken();
+  const headers: HeadersInit = {};
+  if (applicantToken) {
+    headers["Authorization"] = `Bearer ${applicantToken}`;
+  }
+  const res = await fetch(`${API_BASE_URL}/api/jobs/`, { headers });
+  if (!res.ok) {
+    let msg = `Failed to fetch jobs (${res.status})`;
+    try {
+      const err = await res.json();
+      msg = err.detail || err.error || JSON.stringify(err);
+    } catch { }
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.results)) return data.results;
+  return [];
+}
+
 export async function fetchJob(jobId: string | number): Promise<Job> {
   return fetchWithAuth(`${API_BASE_URL}/api/jobs/${jobId}/`);
 }

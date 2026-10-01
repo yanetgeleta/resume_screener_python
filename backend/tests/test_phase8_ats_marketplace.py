@@ -151,7 +151,8 @@ class TestJobApplicationFieldsAndSearch:
             label="Work Authorization", field_type="single_choice"
         ).exists()
 
-    def test_job_search_public(self, api_client):
+    def test_job_search_public(self, api_client, mocker):
+        mocker.patch("jobs.views.embed_text", return_value=[0.1] * 384)
         company = CompanyFactory()
         JobFactory(
             company=company,
@@ -240,8 +241,8 @@ class TestJobApplyFlow:
         app = Application.objects.get(id=data["application_id"])
         assert app.applicant is None
         assert app.guest_full_name == "Guest Candidate"
-        assert app.guest_email == "guest@example.com"
-        assert app.guest_phone_number == "+1987654321"
+        assert app.guest_email == "guest@gmail.com"
+        assert app.guest_phone_number == "+251923456789"
         assert app.source == Application.Source.APPLICANT_SUBMITTED
 
 
@@ -277,7 +278,7 @@ class TestSeeResultAndContactPrompt:
         applicant = ApplicantFactory(
             full_name="Alex Rivera",
             email="alex.rivera@example.com",
-            phone_number="+1-555-987-6543",
+            phone_number="+251923456789",
         )
         resume = ResumeFactory(
             original_filename="alex_rivera_cv.pdf",
