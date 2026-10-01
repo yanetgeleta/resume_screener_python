@@ -1,22 +1,21 @@
 "use client";
 
-import React, { use, useState, useRef, useEffect } from "react";
+import { createSession, fetchJob, fetchSessions, uploadResumes } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  FileText,
+  Loader2,
+  SkipForward,
+  Sparkles,
+  UploadCloud,
+  X
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import {
-  UploadCloud,
-  FileText,
-  X,
-  CheckCircle2,
-  AlertTriangle,
-  Loader2,
-  Sparkles,
-  ArrowRight,
-  SkipForward,
-  Briefcase,
-} from "lucide-react";
-import { uploadResumes, fetchJob, createSession, fetchSessions, recomputeJobRankings } from "@/lib/api";
+import React, { use, useEffect, useRef, useState } from "react";
 
 type Step = "select" | "uploading" | "processing" | "completed";
 
@@ -136,11 +135,6 @@ export default function ResumeUploadPage({
 
     try {
       await uploadResumes(jobId, files);
-      try {
-        await recomputeJobRankings(jobId);
-      } catch {
-        // Ignored if already computing
-      }
       startPollingRanking();
     } catch (err: unknown) {
       setStep("select");
@@ -203,18 +197,16 @@ export default function ResumeUploadPage({
                 </div>
 
                 <div
-                  className={`flex items-center gap-3 p-3.5 rounded-xl border transition-all ${
-                    isRetrievalDone
-                      ? "bg-zinc-800/60 border-zinc-700/50"
-                      : "bg-blue-950/20 border-blue-500/40 shadow-sm shadow-blue-500/10"
-                  }`}
+                  className={`flex items-center gap-3 p-3.5 rounded-xl border transition-all ${isRetrievalDone
+                    ? "bg-zinc-800/60 border-zinc-700/50"
+                    : "bg-blue-950/20 border-blue-500/40 shadow-sm shadow-blue-500/10"
+                    }`}
                 >
                   <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
-                      isRetrievalDone
-                        ? "bg-emerald-500/20 text-emerald-400"
-                        : "bg-blue-500/20 text-blue-400"
-                    }`}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${isRetrievalDone
+                      ? "bg-emerald-500/20 text-emerald-400"
+                      : "bg-blue-500/20 text-blue-400"
+                      }`}
                   >
                     {isRetrievalDone ? (
                       "✓"
@@ -235,22 +227,20 @@ export default function ResumeUploadPage({
                 </div>
 
                 <div
-                  className={`flex items-center gap-3 p-3.5 rounded-xl border transition-all ${
-                    isCompleted
-                      ? "bg-zinc-800/60 border-zinc-700/50"
-                      : isRetrievalDone
+                  className={`flex items-center gap-3 p-3.5 rounded-xl border transition-all ${isCompleted
+                    ? "bg-zinc-800/60 border-zinc-700/50"
+                    : isRetrievalDone
                       ? "bg-purple-950/20 border-purple-500/40"
                       : "bg-zinc-900/40 border-zinc-800/50 opacity-60"
-                  }`}
+                    }`}
                 >
                   <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
-                      isCompleted
-                        ? "bg-emerald-500/20 text-emerald-400"
-                        : isRetrievalDone
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${isCompleted
+                      ? "bg-emerald-500/20 text-emerald-400"
+                      : isRetrievalDone
                         ? "bg-purple-500/20 text-purple-400"
                         : "bg-zinc-800 text-zinc-500"
-                    }`}
+                      }`}
                   >
                     {isCompleted ? (
                       "✓"
@@ -268,8 +258,8 @@ export default function ResumeUploadPage({
                       {isCompleted
                         ? "Top candidates ready"
                         : isRetrievalDone
-                        ? "Synthesizing match summaries and gaps..."
-                        : "Waiting on retrieval stage"}
+                          ? "Synthesizing match summaries and gaps..."
+                          : "Waiting on retrieval stage"}
                     </p>
                   </div>
                 </div>
@@ -290,11 +280,10 @@ export default function ResumeUploadPage({
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all flex flex-col items-center gap-4 ${
-                  isDragging
-                    ? "border-blue-500 bg-blue-950/20"
-                    : "border-zinc-700/80 hover:border-zinc-600 bg-zinc-950/40"
-                }`}
+                className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all flex flex-col items-center gap-4 ${isDragging
+                  ? "border-blue-500 bg-blue-950/20"
+                  : "border-zinc-700/80 hover:border-zinc-600 bg-zinc-950/40"
+                  }`}
               >
                 <input
                   ref={fileInputRef}

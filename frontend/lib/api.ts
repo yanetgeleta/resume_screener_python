@@ -360,7 +360,7 @@ export async function searchJobsApi(query: string = ""): Promise<Job[]> {
     try {
       const err = await res.json();
       msg = err.detail || err.error || JSON.stringify(err);
-    } catch {}
+    } catch { }
     throw new Error(msg);
   }
   const data = await res.json();
@@ -390,7 +390,7 @@ export async function applyJobApi(
     try {
       const err = await response.json();
       errorDetail = err.error || err.detail || (Array.isArray(err.password) ? err.password.join(" ") : null) || JSON.stringify(err);
-    } catch {}
+    } catch { }
     throw new Error(errorDetail);
   }
 
@@ -417,7 +417,7 @@ export async function applicantSignupApi(payload: {
     try {
       const err = await res.json();
       msg = err.detail || err.error || (Array.isArray(err.password) ? err.password.join(" ") : null) || JSON.stringify(err);
-    } catch {}
+    } catch { }
     throw new Error(msg);
   }
 
@@ -441,7 +441,7 @@ export async function applicantLoginApi(payload: {
     try {
       const err = await res.json();
       msg = err.detail || err.error || JSON.stringify(err);
-    } catch {}
+    } catch { }
     throw new Error(msg);
   }
 
@@ -480,7 +480,7 @@ export async function applicantUploadResumeApi(file: File): Promise<ApplicantRes
     try {
       const err = await res.json();
       msg = err.detail || err.error || JSON.stringify(err);
-    } catch {}
+    } catch { }
     throw new Error(msg);
   }
 

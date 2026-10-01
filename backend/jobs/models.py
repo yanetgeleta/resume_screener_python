@@ -48,6 +48,7 @@ class Resume(models.Model):
     skills = models.JSONField(default=None, blank=True, null=True)
     experience_years = models.IntegerField(null=True, blank=True)
     full_text = models.TextField(blank=True, null=True)
+    content_hash = models.CharField(max_length=64, db_index=True, null=True, blank=True)
     company = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

@@ -15,6 +15,7 @@ from jobs.services.chunking import chunk_text
 from jobs.services.embedding import embed_chunks, embed_text
 from jobs.services.extraction import extract_text
 from jobs.services.extraction_llm import extract_skills_experience
+from jobs.services.resume_hashing import hash_resume_text
 from jobs.services.retrieval import aggregate_top2_mean, fetch_candidate_chunks
 from jobs.services.scoring import score_application
 
@@ -30,8 +31,10 @@ def process_resume(resume_id):
         resume.save(update_fields=["status"])
 
         resume_text: str = extract_text(resume.file.path)
+        content_hash = hash_resume_text(resume_text)
         resume.full_text = resume_text
-        resume.save(update_fields=["full_text"])
+        resume.content_hash = content_hash
+        resume.save(update_fields=["full_text", "content_hash"])
 
         resume_chunks_texts = chunk_text(resume_text)
         resume_embeddings = embed_chunks(resume_chunks_texts)
@@ -42,6 +45,7 @@ def process_resume(resume_id):
                 chunk_text=chunk_str,
                 embedding=embedding,
                 chunk_index=chunk_index,
+                # job=resume.job.id,
             )
             for chunk_index, (chunk_str, embedding) in enumerate(
                 zip(resume_chunks_texts, resume_embeddings)
