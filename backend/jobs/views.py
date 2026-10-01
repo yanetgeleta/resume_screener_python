@@ -230,12 +230,23 @@ class JobViewSet(viewsets.ModelViewSet):
                     {"error": "Only PDF files are allowed."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            resume = Resume.objects.create(
-                original_filename=file_obj.name,
-                file=file_obj,
-                applicant=user if is_applicant else None,
-                company=job.company,
-            )
+            file_bytes = file_obj.read()
+            file_obj.seek(0)
+            with pymupdf.open(stream=file_bytes, filetype="pdf") as doc:
+                raw_text = "".join(page.get_text() for page in doc)
+                content_hash = hash_resume_text(raw_text)
+            resume = None
+            if is_applicant:
+                resume = Resume.objects.filter(
+                    applicant=user, content_hash=content_hash
+                ).first()
+            if not resume or not is_applicant:
+                resume = Resume.objects.create(
+                    original_filename=file_obj.name,
+                    file=file_obj,
+                    applicant=user if is_applicant else None,
+                    company=None,
+                )
         else:
             return Response(
                 {"error": "Either resume_id or a resume PDF file is required."},

@@ -71,7 +71,10 @@ class Resume(models.Model):
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(company__isnull=False, applicant__isnull=True)
-                | models.Q(company__isnull=True, applicant__isnull=False),
+                | models.Q(company__isnull=True, applicant__isnull=False)
+                | models.Q(
+                    company__isnull=True, applicant__isnull=True
+                ),  # for guest applicants
                 name="resume_exactly_one_of_company_or_applicant",
             )
         ]
