@@ -1,6 +1,7 @@
 import json
 from datetime import timedelta
 
+import pymupdf
 from accounts.models import Company
 from applicants.auth import IsCompany
 from applicants.models import Applicant
@@ -26,6 +27,7 @@ from jobs.services.chat import (
     get_confidence_band,
 )
 from jobs.services.embedding import embed_text
+from jobs.services.resume_hashing import hash_resume_text
 from jobs.services.retrieval import fetch_candidate_chunks_for_session
 from jobs.tasks import (
     embed_job,
@@ -375,7 +377,7 @@ class ResumeViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """
-        Accepts single file uploads ('file') or batch/folder uploads ('files' or multiple 'file').
+        Accepts single file uploads ('file') or batch/folder uploads ('files' or multiple 'file'). Processes resumes, makes an application for each resume uploaded.
         """
         # Collect all files whether the key is 'files' or 'file'
         uploaded_files = request.FILES.getlist("files") or request.FILES.getlist("file")
@@ -388,28 +390,53 @@ class ResumeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        payload = [
-            {
-                "file": file_obj,
-                "original_filename": file_obj.name,
-            }
-            for file_obj in uploaded_files
-        ]
+        existing_hashes = set(
+            Resume.objects.filter(
+                company=request.user, content_hash__isnull=False
+            ).values_list("content_hash", flat=True)
+        )
 
-        # 1. Run all items through DRF Validation (validate_file, required fields, etc.)
-        serializer = self.get_serializer(data=payload, many=True)
-        serializer.is_valid(raise_exception=True)
+        resumes_to_link = []
+        new_payload = []
 
-        # 2. Save through standard DRF/ORM save() pipeline (fires storage & signals)
-        created_resumes = serializer.save(company=request.user)
-        for resume in created_resumes:
-            process_resume.delay_on_commit(resume.id)
+        for file_obj in uploaded_files:
+            file_bytes = file_obj.read()
+            file_obj.seek(0)
+
+            with pymupdf.open(stream=file_bytes, filetype="pdf") as doc:
+                raw_text = "".join(page.get_text() for page in doc)
+                content_hash = hash_resume_text(raw_text)
+
+                if content_hash and content_hash in existing_hashes:
+                    exisiting_resume = Resume.objects.filter(
+                        company=self.request.user, content_hash=content_hash
+                    ).first()
+                    if exisiting_resume:
+                        resumes_to_link.append(exisiting_resume)
+                        continue
+                    new_payload.append(
+                        {
+                            "file": file_obj,
+                            "original_filename": file_obj.name,
+                            "full_text": raw_text,
+                            "content_hash": content_hash,
+                        }
+                    )
+        if new_payload:
+            serializer = self.get_serializer(data=new_payload, many=True)
+            serializer.is_valid(raise_exception=True)
+            created_resumes = serializer.save(company=request.user)
+
+            for resume in created_resumes:
+                process_resume.delay_on_commit(resume.id)
+                resumes_to_link.append(resume)
 
         job_id = (
             request.data.get("job")
             or request.data.get("job_id")
             or request.query_params.get("job_id")
         )
+        # There must be a job id, because you can't bulk apply without creating a job first
         if job_id:
             try:
                 job = Job.objects.get(id=job_id)
@@ -418,7 +445,7 @@ class ResumeViewSet(viewsets.ModelViewSet):
                         {"error": "Permission denied for this job."},
                         status=status.HTTP_403_FORBIDDEN,
                     )
-                for resume in created_resumes:
+                for resume in resumes_to_link:
                     Application.objects.get_or_create(
                         job=job,
                         resume=resume,

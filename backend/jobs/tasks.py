@@ -45,7 +45,6 @@ def process_resume(resume_id):
                 chunk_text=chunk_str,
                 embedding=embedding,
                 chunk_index=chunk_index,
-                # job=resume.job.id,
             )
             for chunk_index, (chunk_str, embedding) in enumerate(
                 zip(resume_chunks_texts, resume_embeddings)

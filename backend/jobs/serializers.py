@@ -107,10 +107,14 @@ class JobSerializer(serializers.ModelSerializer):
                 if "order" not in clean_data:
                     clean_data["order"] = idx
                 if field_id:
-                    JobApplicationField.objects.filter(id=field_id, job=instance).update(**clean_data)
+                    JobApplicationField.objects.filter(
+                        id=field_id, job=instance
+                    ).update(**clean_data)
                     existing_field_ids.append(field_id)
                 else:
-                    new_f = JobApplicationField.objects.create(job=instance, **clean_data)
+                    new_f = JobApplicationField.objects.create(
+                        job=instance, **clean_data
+                    )
                     existing_field_ids.append(new_f.id)
             instance.application_fields.exclude(id__in=existing_field_ids).delete()
 
@@ -133,6 +137,7 @@ class ResumeSerializer(serializers.ModelSerializer):
             "applicant",
             "status",
             "created_at",
+            "content_hash",
         ]
         read_only_fields = [
             "id",
@@ -273,7 +278,9 @@ class ChatSessionSerializer(serializers.ModelSerializer):
 
         if not user.is_staff and job and job.company != user:
             raise serializers.ValidationError(
-                {"job": "You cannot create a chat session for a job owned by another company."}
+                {
+                    "job": "You cannot create a chat session for a job owned by another company."
+                }
             )
 
         return attrs

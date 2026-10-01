@@ -68,6 +68,13 @@ class Resume(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(company__isnull=False, applicant__isnull=True)
+                | models.Q(company__isnull=True, applicant__isnull=False),
+                name="resume_exactly_one_of_company_or_applicant",
+            )
+        ]
 
 
 class Application(models.Model):
