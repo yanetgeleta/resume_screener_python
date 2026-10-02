@@ -18,6 +18,7 @@ def _get_model() -> SentenceTransformer:
             model_kwargs={
                 "file_name": "onnx/model_O3.onnx",  # Uses pre-optimized ONNX graph from HF
             },
+            local_files_only=True,
         )
     return _model
 

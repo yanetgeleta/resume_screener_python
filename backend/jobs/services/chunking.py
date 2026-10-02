@@ -8,7 +8,7 @@ def _get_tokenizer():
     global _tokenizer
     if _tokenizer is None:
         _tokenizer = AutoTokenizer.from_pretrained(
-            "sentence-transformers/all-MiniLM-L6-v2"
+            "sentence-transformers/all-MiniLM-L6-v2", local_files_only=True
         )
     return _tokenizer
 
