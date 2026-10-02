@@ -174,6 +174,50 @@ class TestJobApplicationFieldsAndSearch:
         assert len(results) >= 1
         assert "Django" in results[0]["title"]
 
+    def test_job_search_fallback_on_embedding_failure(self, api_client, mocker):
+        # Simulate embedding service failure (e.g. HuggingFace downtime / OOM)
+        mocker.patch(
+            "jobs.views.embed_text",
+            side_effect=RuntimeError("Embedding model offline or out of memory"),
+        )
+        company = CompanyFactory()
+        JobFactory(
+            company=company,
+            title="Lead Python Django Developer",
+            description="Backend APIs with PostgreSQL",
+            is_active=True,
+        )
+        JobFactory(
+            company=company,
+            title="Marketing Specialist",
+            description="SEO & Social Media",
+            is_active=True,
+        )
+
+        response = api_client.get("/api/jobs/search/?q=Django")
+        assert response.status_code == status.HTTP_200_OK
+        results = response.json()
+        assert len(results) >= 1
+        assert "Django" in results[0]["title"]
+
+    def test_job_search_full_text_stemming(self, api_client, mocker):
+        mocker.patch("jobs.views.embed_text", return_value=[0.1] * 384)
+        company = CompanyFactory()
+        JobFactory(
+            company=company,
+            title="Senior Architect Developing Cloud Infrastructure",
+            description="High throughput systems",
+            skills=["infrastructure", "cloud"],
+            is_active=True,
+        )
+
+        # "developer" stems to "develop" in English FTS, matching "Developing"
+        response = api_client.get("/api/jobs/search/?q=developer")
+        assert response.status_code == status.HTTP_200_OK
+        results = response.json()
+        assert len(results) >= 1
+        assert "Developing" in results[0]["title"]
+
 
 @pytest.mark.django_db
 class TestJobApplyFlow:

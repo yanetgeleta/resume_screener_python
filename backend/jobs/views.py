@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from datetime import timedelta
 
 import pymupdf
@@ -7,7 +8,9 @@ from accounts.models import Company
 from applicants.auth import IsCompany
 from applicants.models import Applicant
 from asgiref.sync import sync_to_async
-from django.db import models
+from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
+from django.db import connection, models
+from django.db.models.functions import Cast
 from django.http import JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -54,6 +57,8 @@ from .serializers import (
     JobSerializer,
     ResumeSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # Create your views here.
@@ -107,9 +112,10 @@ class JobViewSet(viewsets.ModelViewSet):
     def search(self, request):
         """
         Public and authenticated job search endpoint:
-        - Full-text match on title, description, skills.
+        - Full-text search on title, description, skills (Postgres FTS).
         - Semantic vector similarity using MiniLM embedding vs Job.embedding.
         - Normalized blended score for ranking.
+        - Graceful fallback to pure full-text search on embedding failure.
         """
         query = (
             request.query_params.get("q") or request.query_params.get("query") or ""
@@ -121,46 +127,127 @@ class JobViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(jobs_qs, many=True)
             return Response(serializer.data)
 
-        # 1. Text match filter (title, description, skills)
-        text_matches = jobs_qs.filter(
-            models.Q(title__icontains=query)
-            | models.Q(description__icontains=query)
-            | models.Q(skills__icontains=query)
-        )
-        text_match_ids = set(text_matches.values_list("id", flat=True))
+        # 1. Full-text search (PostgreSQL FTS) with weighted fields
+        if connection.vendor == "postgresql":
+            search_vector = (
+                SearchVector("title", weight="A", config="english")
+                + SearchVector(
+                    Cast("skills", models.TextField()), weight="B", config="english"
+                )
+                + SearchVector("description", weight="C", config="english")
+            )
+            try:
+                search_query = SearchQuery(
+                    query, config="english", search_type="websearch"
+                ) | SearchQuery(query, config="english", search_type="plain")
+            except Exception:
+                search_query = SearchQuery(query, config="english")
 
-        # 2. Semantic vector similarity
-        annotated_jobs = []
+            fts_matches = jobs_qs.annotate(
+                search_vec=search_vector,
+                search_rank=SearchRank(search_vector, search_query),
+            ).filter(
+                models.Q(search_vec=search_query)
+                | models.Q(title__icontains=query)
+                | models.Q(skills__icontains=query)
+                | models.Q(description__icontains=query)
+            )
+        else:
+            fts_matches = jobs_qs.filter(
+                models.Q(title__icontains=query)
+                | models.Q(skills__icontains=query)
+                | models.Q(description__icontains=query)
+            )
+
+        # 2. Semantic vector similarity with Graceful Fallback
+        query_vec = None
         try:
             query_vec = embed_text(query)
+        except Exception as exc:
+            logger.warning(
+                "Embedding generation failed for search query '%s': %s. Falling back gracefully to full-text search.",
+                query,
+                exc,
+            )
+            query_vec = None
+
+        # Fallback path if embedding model failed or is unavailable
+        if query_vec is None:
+            if connection.vendor == "postgresql":
+                fallback_results = list(
+                    fts_matches.order_by("-search_rank", "-created_at")
+                )
+            else:
+                fallback_results = list(fts_matches.order_by("-created_at"))
+            serializer = self.get_serializer(fallback_results, many=True)
+            return Response(serializer.data)
+
+        # 3. Vector similarity query
+        annotated_jobs = []
+        try:
             annotated_jobs = jobs_qs.exclude(embedding__isnull=True).annotate(
                 semantic_dist=MaxInnerProduct("embedding", query_vec)
             )
-        except Exception:
-            annotated_jobs = []
+        except Exception as exc:
+            logger.warning(
+                "Vector similarity query failed for search query '%s': %s. Falling back gracefully to full-text search.",
+                query,
+                exc,
+            )
+            if connection.vendor == "postgresql":
+                fallback_results = list(
+                    fts_matches.order_by("-search_rank", "-created_at")
+                )
+            else:
+                fallback_results = list(fts_matches.order_by("-created_at"))
+            serializer = self.get_serializer(fallback_results, many=True)
+            return Response(serializer.data)
 
-        job_scores = {}
-        for j in jobs_qs:
-            t_score = 1.0 if j.id in text_match_ids else 0.0
-            job_scores[j.id] = (t_score, 0.0, j)
-        # This goes through the annotated jobs and adds the semantic similarity to them. If not it will assign them 0 and reassigns
+        # 4. Blend FTS relevance and semantic similarity
+        text_matches_dict = {}
+        max_rank = 0.0
+        for j in fts_matches:
+            rank = getattr(j, "search_rank", None) or 0.0
+            max_rank = max(max_rank, rank)
+            text_matches_dict[j.id] = (rank, j)
+
+        def get_t_score(job_id):
+            if job_id not in text_matches_dict:
+                return 0.0
+            rank, _ = text_matches_dict[job_id]
+            if max_rank > 0 and rank > 0:
+                return 0.5 + 0.5 * (rank / max_rank)
+            return 0.5
+
+        semantic_map = {}
         for aj in annotated_jobs:
-            t_score, _, j = job_scores.get(aj.id, (0.0, 0.0, aj))
             sem_sim = -aj.semantic_dist  # convert inner product dist back to similarity
-            job_scores[aj.id] = (t_score, sem_sim, aj)
+            semantic_map[aj.id] = (sem_sim, aj)
 
-        # Blend: 0.5 text + 0.5 normalized semantic
-        ranked_jobs = []
         CUTOFF_SEMANTIC_SIMILARITY = 0.30
-        for j_id, (t_score, sem_sim, job_obj) in job_scores.items():
-            norm_sem = max(0.0, min(1.0, (sem_sim + 1.0) / 2.0))
-            blended_score = (0.5 * t_score) + (0.5 * norm_sem)
-            # Cutoff: Discard totally unrelated jobs. Require a direct text match or meaningful semantic similarity
-            if j_id in text_match_ids or sem_sim >= CUTOFF_SEMANTIC_SIMILARITY:
-                ranked_jobs.append((blended_score, job_obj))
+        candidate_ids = set(text_matches_dict.keys()) | {
+            jid
+            for jid, (sim, _) in semantic_map.items()
+            if sim >= CUTOFF_SEMANTIC_SIMILARITY
+        }
 
-        ranked_jobs.sort(key=lambda x: x[0], reverse=True)
-        results = [j for _, j in ranked_jobs]
+        ranked_jobs = []
+        for j_id in candidate_ids:
+            t_score = get_t_score(j_id)
+            if j_id in semantic_map:
+                sem_sim, job_obj = semantic_map[j_id]
+                norm_sem = max(0.0, min(1.0, (sem_sim + 1.0) / 2.0))
+            else:
+                sem_sim = 0.0
+                norm_sem = 0.0
+                job_obj = text_matches_dict[j_id][1]
+
+            blended_score = (0.5 * t_score) + (0.5 * norm_sem)
+            if j_id in text_matches_dict or sem_sim >= CUTOFF_SEMANTIC_SIMILARITY:
+                ranked_jobs.append((blended_score, t_score, job_obj))
+
+        ranked_jobs.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        results = [j for _, _, j in ranked_jobs]
         serializer = self.get_serializer(results, many=True)
         return Response(serializer.data)
 
