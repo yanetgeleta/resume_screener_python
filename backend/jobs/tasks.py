@@ -8,12 +8,12 @@ from django.db import transaction
 from pgvector.django import MaxInnerProduct
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
+from pymupdf import pymupdf
 
 from jobs import groq_client
 from jobs.models import Application, Job, Resume, ResumeChunk
 from jobs.services.chunking import chunk_text
 from jobs.services.embedding import embed_chunks, embed_text
-from jobs.services.extraction import extract_text
 from jobs.services.extraction_llm import extract_skills_experience
 from jobs.services.resume_hashing import hash_resume_text
 from jobs.services.retrieval import aggregate_top2_mean, fetch_candidate_chunks
@@ -30,7 +30,12 @@ def process_resume(resume_id):
         resume.status = Resume.Status.PROCESSING
         resume.save(update_fields=["status"])
 
-        resume_text: str = extract_text(resume.file.path)
+        with resume.file.open("rb") as f:
+            file_bytes = f.read()
+
+        with pymupdf.open(stream=file_bytes, filetype="pdf") as doc:
+            resume_text = "".join(page.get_text() for page in doc)
+
         content_hash = hash_resume_text(resume_text)
         resume.full_text = resume_text
         resume.content_hash = content_hash
@@ -165,8 +170,8 @@ def extract_resume_profile(resume_id):
             resume.save(update_fields=["skills", "experience_years"])
         else:
             resume.save(update_fields=["skills"])
-    except Exception as err:
-        # Ultimate fallback: Log and assign empty skills so the Celery chord doesn't abort
+    except (PydanticValidationError, json.JSONDecodeError, groq.BadRequestError) as err:
+        # Ultimate fallback for non-retryable errors: Log and assign empty skills so the Celery chord doesn't abort
         logger.error(
             "Terminal extraction failure for resume %s: %s. Defaulting to empty skills.",
             resume_id,

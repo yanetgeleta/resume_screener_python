@@ -2,9 +2,10 @@ FROM python:3.13-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-ENV UV_NO_DEV=1
+ENV UV_NO_DEV=1 \
+    UV_LINK_MODE=copy
 
-# Build essentials for packages requiring C/C++ compilation
+# Build essentials for C/C++ compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -13,12 +14,19 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 
-RUN uv sync --frozen --no-install-project --no-cache
+# Step 1: Install dependencies using BuildKit persistent cache mount
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
 
+# Step 2: Copy application code and install project
 COPY . .
 
-RUN uv sync --frozen --no-cache
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
 
+# -------------------------------------------------------------
+# Runtime Stage
+# -------------------------------------------------------------
 FROM python:3.13-slim AS runtime
 
 RUN groupadd --system --gid 10001 customgroup && \
@@ -31,6 +39,7 @@ RUN groupadd --system --gid 10001 customgroup && \
 
 WORKDIR /app
 
+# Copy the built virtual environment and application code
 COPY --chown=customuser:customgroup --from=builder /app /app
 
 ENV PATH="/app/.venv/bin:$PATH" \

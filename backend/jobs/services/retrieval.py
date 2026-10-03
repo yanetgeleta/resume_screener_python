@@ -3,7 +3,7 @@ from typing import NamedTuple
 
 from pgvector.django import MaxInnerProduct
 
-from jobs.models import ResumeChunk
+from jobs.models import Application, ResumeChunk
 from jobs.services.embedding import embed_text
 
 
@@ -64,12 +64,19 @@ def fetch_candidate_chunks_for_session(
     tenant-scoped strictly through session.job_id (Resume -> Application -> Job).
     Ordered by MaxInnerProduct distance (smaller = more similar).
     """
-    query_embedding = embed_text(query)
+
     job_id = _extract_session_job_id(session)
 
-    qs = ResumeChunk.objects.filter(resume__applications__job_id=job_id)
+    app_qs = Application.objects.filter(job_id=job_id)
+
+    # qs = ResumeChunk.objects.filter(resume_id__in=target_resume_ids)
+    # qs = ResumeChunk.objects.filter(resume__applications__job_id=job_id)
     if hasattr(session, "company_id") and session.company_id is not None:
-        qs = qs.filter(resume__applications__job__company_id=session.company_id)
+        app_qs = app_qs.filter(job__company_id=session.company_id)
+    target_resume_ids = list(app_qs.values_list("resume_id", flat=True))
+    if not target_resume_ids:
+        return []
+    query_embedding = embed_text(query)
 
     if limit is not None:
         over_fetch_n = limit
@@ -78,7 +85,8 @@ def fetch_candidate_chunks_for_session(
         over_fetch_n = (head_count * multiplier) if head_count else (5 * multiplier)
 
     return list(
-        qs.annotate(distance=MaxInnerProduct("embedding", query_embedding))
+        ResumeChunk.objects.filter(resume_id__in=target_resume_ids)
+        .annotate(distance=MaxInnerProduct("embedding", query_embedding))
         .order_by("distance")[:over_fetch_n]
         .select_related("resume")
     )
@@ -134,17 +142,3 @@ retrieve_candidate_chunks_for_session = fetch_candidate_chunks_for_session
 retrieve_chunks_for_session = fetch_candidate_chunks_for_session
 
 # Chat & pre-filter imports & re-exports
-from jobs.services.chat import (  # noqa: E402
-    CANNED_DECLINE,
-    CANNED_DECLINE_RESPONSE,
-    DEFAULT_SIMILARITY_THRESHOLD,
-    GROQ_CHAT_MODEL,
-    build_chat_prompt_messages,
-    check_similarity_filter,
-    generate_chat_response,
-    get_canned_decline_if_irrelevant,
-    should_decline_query,
-)
-
-
-

@@ -311,8 +311,12 @@ class JobViewSet(viewsets.ModelViewSet):
             try:
                 if is_applicant:
                     resume = Resume.objects.get(id=resume_id, applicant=user)
-                else:
-                    resume = Resume.objects.get(id=resume_id)
+                if not is_applicant:
+                    if not file_obj:
+                        return Response(
+                            {"error": "Resume PDF file is required."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
             except Resume.DoesNotExist:
                 return Response(
                     {"error": "Specified resume was not found."},
@@ -517,12 +521,12 @@ class ResumeViewSet(viewsets.ModelViewSet):
                 if exisiting_resume:
                     resumes_to_link.append(exisiting_resume)
                     continue
-                new_payload.append(
-                    {
-                        "file": file_obj,
-                        "original_filename": file_obj.name,
-                    }
-                )
+            new_payload.append(
+                {
+                    "file": file_obj,
+                    "original_filename": file_obj.name,
+                }
+            )
         if new_payload:
             serializer = self.get_serializer(data=new_payload, many=True)
             serializer.is_valid(raise_exception=True)
@@ -563,8 +567,8 @@ class ResumeViewSet(viewsets.ModelViewSet):
                     {"error": "Job not found."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
-
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        response_serializer = self.get_serializer(resumes_to_link, many=True)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
 
 class ApplicationViewSet(viewsets.ModelViewSet):
@@ -747,77 +751,71 @@ async def chat_stream_view(request, session_id: int, job_id: int | None = None):
         ]
     )
 
-    extra_context = None
-    if is_multi_candidate:
-        head_count = getattr(session.job, "head_count", None) or 5
-        scored_apps = await sync_to_async(list)(
-            Application.objects.filter(
-                job_id=session.job_id,
-                final_score__isnull=False,
-            )
-            .select_related("resume")
-            .order_by("-final_score")[:head_count]
-        )
-        if scored_apps:
-            extra_context = await sync_to_async(format_ranked_candidates_context)(
-                scored_apps
-            )
-
-    # 1. Step 3: Candidate retrieval
-    chunks = await sync_to_async(fetch_candidate_chunks_for_session)(session, query)
-
-    # 2. Step 4 & Step 7: Deterministic routing based on top result distance
-    if extra_context:
-        band = "confident"
-    else:
-        band = get_confidence_band(chunks)
-
-    # 3. If out of scope: return canned decline stream without calling Groq
-    if band == "decline":
-        await ChatMessage.objects.acreate(
-            session=session,
-            role=ChatMessage.Role.USER,
-            content=query,
-        )
-
-        async def canned_sse_generator():
-            yield f"data: {json.dumps({'content': CANNED_DECLINE})}\n\n"
-            yield "data: [DONE]\n\n"
-            await ChatMessage.objects.acreate(
-                session=session,
-                role=ChatMessage.Role.ASSISTANT,
-                content=CANNED_DECLINE,
-            )
-
-        response = StreamingHttpResponse(
-            canned_sse_generator(), content_type="text/event-stream"
-        )
-        response["Cache-Control"] = "no-cache"
-        response["X-Accel-Buffering"] = "no"
-        return response
-
-    # 4. Step 5 & 7: Build messages payload (caution clause injected if borderline)
-    caution = CAUTION_CLAUSE if band == "borderline" else None
-    messages = await sync_to_async(build_chat_prompt_messages)(
-        session=session,
-        query=query,
-        chunks=chunks,
-        caution_clause=caution,
-        extra_context=extra_context,
-    )
-
-    # 5. Persist incoming user query before streaming response
-    await ChatMessage.objects.acreate(
-        session=session,
-        role=ChatMessage.Role.USER,
-        content=query,
-    )
-
-    # 6. Step 6: Relay token stream from AsyncGroq (openai/gpt-oss-120b)
-    async def groq_sse_generator():
+    # Immediately return the stream; defer heavy retrieval & persistence inside generator
+    async def chat_sse_event_stream():
         accumulated_text = ""
         saved = False
+
         try:
+            # 1. Immediate handshake packet to establish connection & cut TTFT to <50ms
+            yield f"data: {json.dumps({'content': ''})}\n\n"
+
+            # 2. Persist incoming user query in background inside stream
+            await ChatMessage.objects.acreate(
+                session=session,
+                role=ChatMessage.Role.USER,
+                content=query,
+            )
+
+            # 3. Context & Multi-candidate resolution
+            extra_context = None
+            if is_multi_candidate:
+                head_count = getattr(session.job, "head_count", None) or 5
+                scored_apps = await sync_to_async(list)(
+                    Application.objects.filter(
+                        job_id=session.job_id,
+                        final_score__isnull=False,
+                    )
+                    .select_related("resume")
+                    .order_by("-final_score")[:head_count]
+                )
+                if scored_apps:
+                    extra_context = await sync_to_async(
+                        format_ranked_candidates_context
+                    )(scored_apps)
+
+            # 4. Retrieval & Routing (Resolves Finding 13: skip vector search if extra_context is present)
+            if extra_context:
+                chunks = []
+                band = "confident"
+            else:
+                chunks = await sync_to_async(fetch_candidate_chunks_for_session)(
+                    session, query
+                )
+                band = get_confidence_band(chunks)
+
+            # 5. Fast-path: Canned decline if out of scope
+            if band == "decline":
+                yield f"data: {json.dumps({'content': CANNED_DECLINE})}\n\n"
+                yield "data: [DONE]\n\n"
+                await ChatMessage.objects.acreate(
+                    session=session,
+                    role=ChatMessage.Role.ASSISTANT,
+                    content=CANNED_DECLINE,
+                )
+                return
+
+            # 6. Build prompt payload
+            caution = CAUTION_CLAUSE if band == "borderline" else None
+            messages = await sync_to_async(build_chat_prompt_messages)(
+                session=session,
+                query=query,
+                chunks=chunks,
+                caution_clause=caution,
+                extra_context=extra_context,
+            )
+
+            # 7. Stream LLM tokens from Groq
             client = async_groq_client_instance
             stream = await client.chat.completions.create(
                 model=GROQ_CHAT_MODEL,
@@ -841,16 +839,12 @@ async def chat_stream_view(request, session_id: int, job_id: int | None = None):
                     content=accumulated_text,
                 )
                 saved = True
+
         except Exception as exc:
-            error_payload = {
-                "error": "Failed to generate complete response from model.",
-                "detail": str(exc),
-            }
-            yield f"data: {json.dumps(error_payload)}\n\n"
+            yield f"data: {json.dumps({'error': 'Failed to generate complete response.', 'detail': str(exc)})}\n\n"
             yield "data: [DONE]\n\n"
+
         finally:
-            # Client disconnect / dropped stream:
-            # Persist partial content so dialogue turns remain paired and context is not lost
             if not saved and accumulated_text.strip():
                 await ChatMessage.objects.acreate(
                     session=session,
@@ -860,7 +854,7 @@ async def chat_stream_view(request, session_id: int, job_id: int | None = None):
                 saved = True
 
     response = StreamingHttpResponse(
-        groq_sse_generator(), content_type="text/event-stream"
+        chat_sse_event_stream(), content_type="text/event-stream"
     )
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"

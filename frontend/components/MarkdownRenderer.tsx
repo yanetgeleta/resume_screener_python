@@ -1,9 +1,9 @@
 "use client";
 
-import React from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 
 interface MarkdownRendererProps {
   content: string;
@@ -25,7 +25,7 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
     <div className={`prose-dark max-w-none text-sm leading-relaxed ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, defaultSchema]]}
         components={{
           table: ({ node, ...props }) => (
             <div className="overflow-x-auto my-3 rounded-xl border border-zinc-700/80 bg-zinc-900/90 shadow-xl shadow-black/20">

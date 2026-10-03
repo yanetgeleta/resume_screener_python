@@ -34,6 +34,15 @@ class Job(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+        indexes = [
+            HnswIndex(
+                name="job_embedding_hnsw_idx",
+                fields=["embedding"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_ip_ops"],
+            )
+        ]
 
 
 class Resume(models.Model):

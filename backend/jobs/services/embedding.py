@@ -1,24 +1,33 @@
 from celery.signals import worker_process_init
+from huggingface_hub import snapshot_download
 from sentence_transformers import (
     SentenceTransformer,
 )
 
-_model = None
-
-
 # I was going to quantize the model and run it with onnx but there is already one that is optimized on huggingface
 # so using it
+_model: SentenceTransformer | None = None
+MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
+
+
 def _get_model() -> SentenceTransformer:
     global _model
     if _model is None:
+        try:
+            # Resolves the cached folder path on disk without network access
+            local_model_path = snapshot_download(
+                repo_id=MODEL_ID,
+                local_files_only=True,
+            )
+        except Exception:
+            local_model_path = MODEL_ID
         _model = SentenceTransformer(
-            "sentence-transformers/all-MiniLM-L6-v2",
+            local_model_path,
             device="cpu",
             backend="onnx",
             model_kwargs={
                 "file_name": "onnx/model_O3.onnx",  # Uses pre-optimized ONNX graph from HF
             },
-            local_files_only=True,
         )
     return _model
 

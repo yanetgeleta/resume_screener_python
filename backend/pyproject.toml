@@ -12,7 +12,6 @@ dependencies = [
     "django-cors-headers>=4.9.0",
     "djangorestframework>=3.18.0",
     "djangorestframework-simplejwt>=5.5.1",
-    "docling>=2.121.0",
     "factory-boy>=3.3.3",
     "groq>=1.7.0",
     "gunicorn>=26.2.0",

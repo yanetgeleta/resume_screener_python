@@ -7,6 +7,7 @@ import { useChatStream } from "@/lib/useChatStream";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
+  ArrowDown,
   Bot,
   Send,
   Sparkles,
@@ -33,9 +34,15 @@ export default function ChatSessionConversationPage({
 
   const [inputQuery, setInputQuery] = useState("");
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autoSynthesizedRef = useRef(false);
+  const userScrolledUpRef = useRef(false);
+  const lastScrollTopRef = useRef(0);
+  const touchStartYRef = useRef(0);
+  const isInitialLoadRef = useRef(true);
 
   // Fetch Job details to monitor title and ranking_status
   const { data: job, refetch: refetchJob } = useQuery({
@@ -69,6 +76,54 @@ export default function ChatSessionConversationPage({
     jobId,
   });
 
+  // Explicit scroll to bottom handler
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    userScrolledUpRef.current = false;
+    setShowScrollBottomBtn(false);
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  };
+
+  // Scroll and gesture listeners to respect user interaction
+  const handleScroll = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+    if (distanceFromBottom <= 40) {
+      // User reached the bottom: re-enable auto-scroll
+      userScrolledUpRef.current = false;
+      setShowScrollBottomBtn(false);
+    } else if (scrollTop < lastScrollTopRef.current - 10) {
+      // User intentionally scrolled UP: lock position and halt auto-scrolling
+      userScrolledUpRef.current = true;
+      setShowScrollBottomBtn(true);
+    }
+
+    lastScrollTopRef.current = scrollTop;
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY < 0) {
+      // User scrolled up via mouse wheel / trackpad
+      userScrolledUpRef.current = true;
+      setShowScrollBottomBtn(true);
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartYRef.current = e.touches[0].clientY;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    // Finger dragging down scrolls view upward
+    if (e.touches[0].clientY > touchStartYRef.current + 10) {
+      userScrolledUpRef.current = true;
+      setShowScrollBottomBtn(true);
+    }
+  };
+
   // Auto-synthesize top candidates query if directed from resume upload transition
   useEffect(() => {
     const shouldAutoSynthesize = searchParams.get("autoSynthesize") === "true";
@@ -79,6 +134,8 @@ export default function ChatSessionConversationPage({
       messages.length === 0
     ) {
       autoSynthesizedRef.current = true;
+      userScrolledUpRef.current = false;
+      setShowScrollBottomBtn(false);
       const headCount = job?.head_count || 5;
       const synthesizedQuery = `Please provide a profile of the top ${headCount} candidates ranked by final_score, including each candidate's strengths, summary, gaps, and contact/personal information (such as phone number, email, GitHub, LinkedIn, social media, or any other contact details found on their resume or application).`;
       sendQuery(synthesizedQuery);
@@ -91,9 +148,20 @@ export default function ChatSessionConversationPage({
     sendQuery,
   ]);
 
-  // Auto-scroll to bottom as messages or streamed text updates
+  // Auto-scroll to bottom as messages or streamed text updates,
+  // respecting user interaction: do NOT force down if the user scrolled up
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (userScrolledUpRef.current) {
+      return;
+    }
+
+    messagesEndRef.current?.scrollIntoView({
+      behavior: isInitialLoadRef.current ? "auto" : "smooth",
+    });
+
+    if (isInitialLoadRef.current && messages.length > 0) {
+      isInitialLoadRef.current = false;
+    }
   }, [messages, partialText, isStreaming, isThinking]);
 
   // Auto-resize textarea height as more lines are inputed
@@ -121,6 +189,9 @@ export default function ChatSessionConversationPage({
     if (textareaRef.current) {
       textareaRef.current.style.height = "46px";
     }
+    // Sending a new query explicitly scrolls to bottom
+    userScrolledUpRef.current = false;
+    setShowScrollBottomBtn(false);
     sendQuery(textToSend);
   };
 
@@ -135,6 +206,8 @@ export default function ChatSessionConversationPage({
   const handleUploadMoreSuccess = async () => {
     setShowUploadModal(false);
     await refetchJob();
+    userScrolledUpRef.current = false;
+    setShowScrollBottomBtn(false);
     // Synthesize updated ranking summary query in this same chat per specification
     const headCount = job?.head_count || 5;
     const synthesizedQuery = `Please provide an updated profile of the top ${headCount} candidates ranked by final_score, including each candidate's strengths, summary, gaps, and contact/personal information (such as phone number, email, GitHub, LinkedIn, social media, or any other contact details found on their resume or application).`;
@@ -142,7 +215,7 @@ export default function ChatSessionConversationPage({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-950">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-950 relative">
       {/* Top Session Header */}
       <header className="h-14 border-b border-zinc-800/80 px-6 flex items-center justify-between bg-zinc-900/30 backdrop-blur-md shrink-0">
         <div className="flex items-center gap-3">
@@ -173,7 +246,14 @@ export default function ChatSessionConversationPage({
       </header>
 
       {/* Main Conversation Body */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6"
+      >
         {isLoadingMessages ? (
           <div className="flex items-center justify-center h-full text-xs text-zinc-500">
             Loading message history...
@@ -285,6 +365,20 @@ export default function ChatSessionConversationPage({
           </div>
         )}
       </div>
+
+      {/* Floating Scroll to Bottom Button */}
+      {showScrollBottomBtn && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+          <button
+            type="button"
+            onClick={() => scrollToBottom("smooth")}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-zinc-900/95 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/80 shadow-xl backdrop-blur-md text-xs font-medium transition-all cursor-pointer group"
+          >
+            <span>Scroll to bottom</span>
+            <ArrowDown className="w-3.5 h-3.5 text-blue-400 group-hover:translate-y-0.5 transition-transform" />
+          </button>
+        </div>
+      )}
 
       {/* Composer Section / Locked State */}
       <div className="border-t border-zinc-800/80 p-4 bg-zinc-900/40 backdrop-blur-xl shrink-0">
