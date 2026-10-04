@@ -81,13 +81,25 @@ class JobViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if not user or not user.is_authenticated:
-            return Job.objects.filter(is_active=True).select_related("company")
-        if isinstance(user, Applicant):
-            return Job.objects.filter(is_active=True).select_related("company")
-        if user.is_staff:
-            return Job.objects.all().select_related("company")
-        return Job.objects.filter(company=user).select_related("company")
+
+        if not user or not user.is_authenticated or isinstance(user, Applicant):
+            qs = Job.objects.filter(is_active=True)
+        elif user.is_staff:
+            qs = Job.objects.all()
+        else:
+            qs = Job.objects.filter(company=user)
+        return (
+            qs.select_related("company")
+            .annotate(
+                annotated_application_count=models.Count("applications", distinct=True),
+                annotated_processed_count=models.Count(
+                    "applications",
+                    filter=models.Q(applications__pipeline_status="processed"),
+                    distinct=True,
+                ),
+            )
+            .prefetch_related("application_fields")
+        )
 
     def perform_create(self, serializer):
         created_job = serializer.save(company=self.request.user)

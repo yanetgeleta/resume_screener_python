@@ -78,9 +78,15 @@ class JobSerializer(serializers.ModelSerializer):
         ]
 
     def get_application_count(self, obj):
+        count = getattr(obj, "annotated_application_count", None)
+        if count is not None:
+            return count
         return obj.applications.count()
 
     def get_processed_application_count(self, obj):
+        count = getattr(obj, "annotated_processed_count", None)
+        if count is not None:
+            return count
         return obj.applications.filter(pipeline_status="processed").count()
 
     def create(self, validated_data):
@@ -162,6 +168,17 @@ class ResumeSerializer(serializers.ModelSerializer):
         return value
 
 
+class JobSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Job
+        fields = [
+            "id",
+            "title",
+            "is_active",
+            "created_at",
+        ]  # Strips 384-dim vector & nested counts
+
+
 class ApplicationSerializer(serializers.ModelSerializer):
     job = serializers.PrimaryKeyRelatedField(queryset=Job.objects.all())
     resume = serializers.PrimaryKeyRelatedField(queryset=Resume.objects.all())
@@ -226,7 +243,9 @@ class ApplicationSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         """Nested Pattern: replaces the ids for job and resume with their information"""
         representation = super().to_representation(instance)
-        representation["job"] = JobSerializer(instance.job, context=self.context).data
+        representation["job"] = JobSummarySerializer(
+            instance.job, context=self.context
+        ).data
         representation["resume"] = ResumeSerializer(
             instance.resume, context=self.context
         ).data
