@@ -32,3 +32,5 @@ CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://127.0.0.1:63
 # Console Email
 # EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 MAILERS = {"default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"}}
+
+FRONTEND_URL = "http://localhost:3000"

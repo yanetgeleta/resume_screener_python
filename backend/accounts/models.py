@@ -43,6 +43,7 @@ class Company(AbstractBaseUser, PermissionsMixin):
     company_name = models.CharField(max_length=200)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
 
     objects = CompanyManager()
     USERNAME_FIELD = "email"

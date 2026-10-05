@@ -37,6 +37,8 @@ def process_resume(resume_id):
             resume_text = "".join(page.get_text() for page in doc)
 
         content_hash = hash_resume_text(resume_text)
+
+        content_hash = hash_resume_text(resume_text)
         resume.full_text = resume_text
         resume.content_hash = content_hash
         resume.save(update_fields=["full_text", "content_hash"])
@@ -170,8 +172,8 @@ def extract_resume_profile(resume_id):
             resume.save(update_fields=["skills", "experience_years"])
         else:
             resume.save(update_fields=["skills"])
-    except (PydanticValidationError, json.JSONDecodeError, groq.BadRequestError) as err:
-        # Ultimate fallback for non-retryable errors: Log and assign empty skills so the Celery chord doesn't abort
+    except Exception as err:
+        # Ultimate fallback: Log and assign empty skills so the Celery chord doesn't abort
         logger.error(
             "Terminal extraction failure for resume %s: %s. Defaulting to empty skills.",
             resume_id,
@@ -471,3 +473,18 @@ def process_single_application(application_id: int):
         application.pipeline_status = Application.PipelineStatus.FAILED
         application.save(update_fields=["pipeline_status"])
         raise exc
+
+
+@shared_task(
+    autoretry_for=(Exception,),  # Adjust to specific network/socket errors
+    retry_backoff=True,
+    max_retries=3,
+)
+def send_verification_email_task(model_label: str, pk: str | int):
+    """1. Resolve the model dynamically using apps.get_model(model_label).
+
+    2. Fetch the instance using pk (handle DoesNotExist defensively). 3.
+    Generate verification token using your core/tokens.py. 4. Construct the
+    activation URL using settings.FRONTEND_URL. 5. Call Django's built-in
+    send_mail(...) with subject, body, from_email, and recipient list.
+    """

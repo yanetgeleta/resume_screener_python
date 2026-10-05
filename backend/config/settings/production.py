@@ -2,6 +2,8 @@ import os
 
 import dj_database_url
 
+from config.settings.development import FRONTEND_URL
+
 from .base import *
 
 DEBUG = False
@@ -48,3 +50,5 @@ CORS_ALLOWED_ORIGINS = os.getenv(
     "CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
 ).split(",")
 CORS_ALLOW_CREDENTIALS = True
+
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://myfrontendapp.com")
