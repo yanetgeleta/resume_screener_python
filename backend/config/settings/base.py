@@ -118,3 +118,5 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 
 DEFAULT_FROM_EMAIL = "noreply@trance.com"
+
+FRONTEND_URL = "http://localhost:3000"

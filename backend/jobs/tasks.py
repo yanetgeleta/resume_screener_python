@@ -4,6 +4,10 @@ import math
 
 import groq
 from celery import chord, group, shared_task
+from config import settings
+from core import tokens
+from django import apps
+from django.core.mail import send_mail
 from django.db import transaction
 from pgvector.django import MaxInnerProduct
 from pydantic import BaseModel, ConfigDict
@@ -481,10 +485,41 @@ def process_single_application(application_id: int):
     max_retries=3,
 )
 def send_verification_email_task(model_label: str, pk: str | int):
-    """1. Resolve the model dynamically using apps.get_model(model_label).
-
-    2. Fetch the instance using pk (handle DoesNotExist defensively). 3.
-    Generate verification token using your core/tokens.py. 4. Construct the
-    activation URL using settings.FRONTEND_URL. 5. Call Django's built-in
-    send_mail(...) with subject, body, from_email, and recipient list.
+    """Asynchronously builds and sends the account activation email.
+    Safely resolves the model, generates a self-contained token,
+    and dispatches via Django's configured email backend.
     """
+    model = apps.get_model(model_label)
+    try:
+        user = model.objects.get(pk=pk)
+    except model.DoesNotExist:
+        logger.warning(
+            "Cannot send verification email: %s with pk=%s not found.",
+            model_label,
+            pk,
+        )
+        return
+    verification_token = tokens.generate_verification_token(user)
+    activation_url = (
+        f"{settings.FRONTEND_URL.rstrip('/')}/activate?token={verification_token}"
+    )
+    recipient_name = (
+        getattr(user, "full_name", None)
+        or getattr(user, "company_name", None)
+        or "there"
+    )
+    subject = "Activate your account"
+    message = (
+        f"Hi {recipient_name},\n\n"
+        "Please use the following link to activate your account and start using the platform:\n"
+        f"{activation_url}\n\n"
+        "If you did not create this account, you can safely ignore this email."
+    )
+
+    send_mail(
+        subject=subject,
+        message=message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user.email],
+        fail_silently=False,
+    )
